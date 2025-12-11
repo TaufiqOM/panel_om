@@ -1,0 +1,461 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8">
+    <title>QR Code Sederhana - Fixed</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
+
+    <!-- Print page size for A6 -->
+    <style type="text/css" media="print">
+        @page {
+            size: A6;
+            margin: 0;
+        }
+    </style>
+
+    <style>
+        body {
+            background: #eee;
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+        }
+
+        .page {
+            background: #fff;
+            width: 105mm;
+            /* A6 width */
+            height: 148mm;
+            /* A6 height */
+            margin: 0;
+            padding: 4mm;
+            box-sizing: border-box;
+            position: relative;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            display: flex;
+            flex-direction: column;
+            page-break-inside: avoid;
+        }
+
+        .page-break {
+            page-break-after: always;
+        }
+
+        img.product-img {
+            max-width: 100%;
+            max-height: 100%;
+            width: auto;
+            height: auto;
+            object-fit: contain;
+        }
+
+        img.logo {
+            height: 100%;
+            max-height: 35px;
+            object-fit: contain;
+        }
+
+        .qr {
+            padding: 3px;
+            background-color: white;
+            border-radius: 5px;
+            margin: auto;
+        }
+
+        .qr-center {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .qr-item-cell {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .info {
+            text-align: center;
+            margin-top: 5px;
+            color: #333;
+            font-size: 9px;
+        }
+
+        .print-btn {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            z-index: 999;
+            border-radius: 50%;
+            padding: 12px 18px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+        }
+
+        @media print {
+            body {
+                background: none !important;
+                margin: 0 !important;
+                padding: 0 !important;
+            }
+
+            .page {
+                margin: 0 !important;
+                box-shadow: none !important;
+                width: 105mm !important;
+                height: 148mm !important;
+                padding: 4mm !important;
+                page-break-inside: avoid !important;
+                page-break-after: always !important;
+            }
+
+            .print-btn {
+                display: none !important;
+            }
+
+            /* Ensure all text is visible and properly sized for print */
+            * {
+                -webkit-print-color-adjust: exact !important;
+                color-adjust: exact !important;
+            }
+
+            /* Optimize QR codes for print */
+            .qr canvas {
+                max-width: 100% !important;
+                height: auto !important;
+            }
+
+            /* Ensure images maintain aspect ratio in print */
+            img {
+                max-width: 100% !important;
+                height: auto !important;
+            }
+
+            /* Optimize table borders for print */
+            .table-bordered {
+                border: 1px solid #000 !important;
+            }
+
+            .table-bordered td,
+            .table-bordered th {
+                border: 1px solid #000 !important;
+            }
+        }
+
+        .fs-small {
+            font-size: 9px;
+            line-height: 1.1;
+        }
+
+        .fs-medium {
+            font-size: 10px;
+            line-height: 1.1;
+        }
+
+        .fs-large {
+            font-size: 14px;
+            line-height: 1.1;
+        }
+
+        .fs-xlarge {
+            font-size: 20px;
+            line-height: 1.1;
+        }
+
+        .table-bordered td,
+        .table-bordered th {
+            border-color: #333 !important;
+        }
+
+        h6 {
+            font-size: 13px;
+            margin: 5px 0;
+            line-height: 1.1;
+        }
+
+        .fs-product-name {
+            font-size: 11px;
+            line-height: 1.1;
+        }
+
+        /* Perbaikan untuk header */
+        .header-table {
+            height: 32px !important;
+            max-height: 32px !important;
+            table-layout: fixed;
+            width: 100%;
+            margin-bottom: 1px !important;
+        }
+
+        .header-table td {
+            height: 32px !important;
+            max-height: 32px !important;
+            padding: 1px 2px !important;
+            vertical-align: middle !important;
+            overflow: hidden;
+        }
+
+        .header-table .fs-xlarge {
+            line-height: 1 !important;
+            font-size: 20px;
+        }
+
+        .header-table .fs-large {
+            line-height: 1 !important;
+            font-size: 14px;
+        }
+
+        /* Perbaikan khusus untuk kolom kanan */
+        .header-table td:last-child {
+            font-size: 14px !important;
+            font-weight: bold;
+            text-align: center;
+            padding: 0 !important;
+        }
+
+        /* Pastikan logo memiliki tinggi yang konsisten */
+        .header-table img.logo {
+            max-height: 30px;
+            width: auto;
+            display: block;
+            margin: 0 auto;
+        }
+
+        /* Perbaikan untuk text wrap di semua tabel */
+        table {
+            table-layout: fixed;
+            width: 100%;
+        }
+
+        td {
+            word-wrap: break-word;
+            overflow-wrap: break-word;
+            hyphens: auto;
+            padding: 2px 3px !important;
+        }
+
+        /* Penyesuaian untuk konten yang panjang */
+        .long-text {
+            max-height: 100%;
+            overflow: hidden;
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+        }
+
+        /* Flex container untuk konten utama - PERBAIKAN UTAMA */
+        .content-container {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            justify-content: flex-start;
+            /* Diubah dari space-between */
+            gap: 1px;
+            /* Kontrol jarak antar elemen untuk A6 */
+            height: 100%;
+        }
+
+        /* Penyesuaian untuk tabel dengan konten panjang */
+        .table-sm td {
+            padding: 1px 2px !important;
+        }
+
+        /* Penyesuaian khusus untuk bagian catatan */
+        .notes-cell {
+            max-height: 45px;
+            overflow: hidden;
+        }
+
+        .mb-1px {
+            margin-bottom: 1px !important;
+        }
+
+        /* Perbaikan margin untuk semua tabel */
+        .table {
+            margin-bottom: 2px !important;
+        }
+
+        /* Spesifik untuk tabel kedua */
+        .table:nth-child(2) {
+            margin-bottom: 3px !important;
+        }
+
+        /* Perbaikan untuk bagian detail produk */
+        .detail-table {
+            margin-bottom: 3px !important;
+        }
+
+        /* Perbaikan untuk bagian QR item */
+        .qr-item-table {
+            margin-top: 3px !important;
+        }
+    </style>
+</head>
+
+<body>
+
+    <!-- Card Produk 1 -->
+    <div class="page page-break">
+        <div class="content-container">
+
+            <!-- Header -->
+            <table class="table table-bordered border-dark header-table">
+                <tr class="align-middle">
+                    <td class="text-center" style="width: 25%;">
+                        <img src="http://192.168.0.5/omega/gambar/logo_c2.jpg" class="logo" alt="Logo">
+                    </td>
+                    <td class="fw-bold text-center" style="width: 50%; font-size: 28px !important;">23352</td>
+                    <td class="text-center fw-bold" style="width: 25%; font-size: 20px !important;">Sep25</td>
+                </tr>
+            </table>
+
+            <!-- QR Order + Info -->
+            <table class="table table-bordered border-dark">
+                <tr>
+                    <td class="fs-small" style="width: 75%;">
+                        <div>AVAILABLE ON STOCK RAW // FINISHING: TEAK OIL FINISH</div>
+                    </td>
+                    <td class="text-center fs-small p-0" style="width: 25%;">
+                        <div class="mb-0">QR Order</div>
+                        <div id="qr-order-1" class="qr-center mb-1"></div>
+                        <div class="info">TDP250901WOODVILLE-OMD</div>
+                    </td>
+                </tr>
+            </table>
+
+            <!-- Nama Produk -->
+            <table class="table" style="height: 40px;">
+                <h6 class="fw-bold fs-product-name">Mirror Resin Stone Wall Art - Finish Cheese Stone Mirror Resin Stone
+                    Wall Art - Finish Cheese Stone </h6>
+            </table>
+
+            <!-- Detail Produk -->
+            <table class="table table-sm border-white align-middle detail-table" style="width: 100%;">
+                <tr>
+                    <td style="width: 65%; vertical-align: top;">
+                        <table style="width: 100%;">
+                            <tr>
+                                <td style="width: 50%; font-size: 13px;">Order Date:</td>
+                                <td style="width: 50%; font-size: 13px;">Due Date:</td>
+                            </tr>
+                            <tr>
+                                <td style="width: 50%; font-size: 13px;"><b>01 Sep 25</b></td>
+                                <td style="width: 50%; font-size: 13px;"><b>15 Sep 25</b></td>
+                            </tr>
+                            <tr>
+                                <td colspan="2" style="height: 40px; font-size: 18px;">BLACK BEAN.SP</td>
+                            </tr>
+                            <tr>
+                                <td colspan="2" class="text-decoration-underline"
+                                    style="font-size: 32px; font-weight: bold;">TDP/NZ</td>
+                            </tr>
+                            <tr>
+                                <td class="fs-large" style="width: 50%; font-weight: bold;">FRE</td>
+                                <td class="fs-large" style="width: 50%;">New Zealand</td>
+                            </tr>
+                        </table>
+                    </td>
+                    <td style="width: 35%; text-align: center; vertical-align: top;">
+                        <img src="http://192.168.0.5/GbrProduk/233532310101426.jpg" class="product-img">
+                    </td>
+                </tr>
+            </table>
+
+            <!-- Catatan + QC -->
+            <table class="table table-bordered table-sm border-dark">
+                <tr>
+                    <td rowspan="3" style="width: 93%;">
+                        <div style="text-align: justify; font-size: 10px;">
+                            Lorem ipsum dolor sit amet, consectetur adipisicing elit.
+                            Nihil, voluptatem eligendi. Aspernatur ducimus cupiditate iste
+                            atque suscipit harum necessitatibus accusantium incidunt animi
+                            error laboriosam quia rerum.
+                        </div>
+                    </td>
+                    <td class="text-center fs-small" style="width: 7%;">FPS</td>
+                </tr>
+                <tr>
+                    <td class="p-0"><br></td>
+                </tr>
+                <tr>
+                    <td class="text-center fs-small">QC</td>
+                </tr>
+            </table>
+
+            <!-- QR Item -->
+            <table class="table border-white qr-item-table" style="width: 100%;">
+                <tr>
+                    <td class="text-center qr-item-cell"
+                        style="width: 100%; text-align: center; vertical-align: top;">
+                        <div style="margin-bottom: 5px; display: flex; justify-content: center; align-items: center; font-size: 12px;">QR
+                            Item</div>
+                        <div id="qr-item-left-1" class="qr"></div>
+                    </td>
+                    <td class="text-center fs-medium" style="width: 50%; text-align: center; vertical-align: top;"
+                        rowspan="2">
+                        <table style="width: 100%; height: 100%;">
+                            <tr>
+                                <td class="fs-medium">No Item</td>
+                            </tr>
+                            <tr>
+                                <td style="font-size: 18px;"><b>166024-0001-0002</b></td>
+                            </tr>
+                            <tr>
+                                <td class="fs-medium">22 September 2025</td>
+                            </tr>
+                        </table>
+                    </td>
+                    <td class="text-center qr-item-cell"
+                        style="width: 100%; text-align: center; vertical-align: top;">
+                        <div style="margin-bottom: 5px; display: flex; justify-content: center; align-items: center; font-size: 12px;">QR
+                            Item</div>
+                        <div id="qr-item-right-1" class="qr"></div>
+                    </td>
+                </tr>
+            </table>
+        </div>
+    </div>
+
+    <!-- Floating Print Button -->
+    <button onclick="window.print()" class="btn btn-primary print-btn">🖨️</button>
+
+    <script>
+        // Data QR Code
+        const qrData = [
+            { order: "TDP250901WOODVILLE-OMD", item: "166024-0001-0002" },
+        ];
+
+        // Generate QR Codes optimized for A6 print
+        qrData.forEach((data, idx) => {
+            new QRCode(document.getElementById(`qr-order-${idx + 1}`), {
+                text: data.order,
+                width: 55,
+                height: 55,
+                colorDark: "#000000",
+                colorLight: "#FFFFFF",
+                correctLevel: QRCode.CorrectLevel.L
+            });
+            new QRCode(document.getElementById(`qr-item-left-${idx + 1}`), {
+                text: data.item,
+                width: 60,
+                height: 60,
+                colorDark: "#000000",
+                colorLight: "#FFFFFF",
+                correctLevel: QRCode.CorrectLevel.L
+            });
+            new QRCode(document.getElementById(`qr-item-right-${idx + 1}`), {
+                text: data.item,
+                width: 60,
+                height: 60,
+                colorDark: "#000000",
+                colorLight: "#FFFFFF",
+                correctLevel: QRCode.CorrectLevel.L
+            });
+        });
+    </script>
+</body>
+
+</html>

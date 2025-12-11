@@ -1,0 +1,121 @@
+[20-Oct-2025 02:32:12 UTC] Odoo connection info failed for username: system
+[20-Oct-2025 06:45:37 UTC] Odoo connection info failed for username: system
+[20-Oct-2025 06:45:50 UTC] Odoo connection info failed for username: system
+[20-Oct-2025 06:45:50 UTC] Odoo connection info failed for username: system
+[20-Oct-2025 06:45:50 UTC] Odoo connection info failed for username: system
+[20-Oct-2025 06:45:56 UTC] Odoo connection info failed for username: system
+[20-Oct-2025 06:45:56 UTC] Odoo connection info failed for username: system
+[20-Oct-2025 06:45:56 UTC] Odoo connection info failed for username: system
+[20-Oct-2025 06:48:08 UTC] Odoo connection info failed for username: system
+[20-Oct-2025 06:48:08 UTC] Odoo connection info failed for username: system
+[20-Oct-2025 06:48:08 UTC] Odoo connection info failed for username: system
+[20-Oct-2025 06:48:35 UTC] Odoo connection info failed for username: system
+[20-Oct-2025 06:48:35 UTC] Odoo connection info failed for username: system
+[20-Oct-2025 06:48:35 UTC] Odoo connection info failed for username: system
+[20-Oct-2025 06:49:56 UTC] Odoo connection info failed for username: system
+[20-Oct-2025 06:49:56 UTC] Odoo connection info failed for username: system
+[20-Oct-2025 06:49:56 UTC] Odoo connection info failed for username: system
+[20-Oct-2025 07:00:23 UTC] Odoo connection info failed for username: system
+[20-Oct-2025 07:00:23 UTC] Odoo connection info failed for username: system
+[20-Oct-2025 07:00:23 UTC] Odoo connection info failed for username: system
+[20-Oct-2025 07:01:16 UTC] Odoo connection info failed for username: system
+[20-Oct-2025 07:01:16 UTC] Odoo connection info failed for username: system
+[20-Oct-2025 07:01:16 UTC] Odoo connection info failed for username: system
+[20-Oct-2025 07:01:17 UTC] Odoo connection info failed for username: system
+[20-Oct-2025 07:01:17 UTC] Odoo connection info failed for username: system
+[20-Oct-2025 07:01:17 UTC] Odoo connection info failed for username: system
+[20-Oct-2025 07:01:18 UTC] Odoo connection info failed for username: system
+[20-Oct-2025 07:01:18 UTC] Odoo connection info failed for username: system
+[20-Oct-2025 07:01:18 UTC] Odoo connection info failed for username: system
+[20-Oct-2025 07:01:19 UTC] Odoo connection info failed for username: system
+[20-Oct-2025 07:01:19 UTC] Odoo connection info failed for username: system
+[20-Oct-2025 07:01:19 UTC] Odoo connection info failed for username: system
+[20-Oct-2025 08:56:08 UTC] Odoo connection info failed for username: system
+[20-Oct-2025 08:56:08 UTC] Odoo connection info failed for username: system
+[20-Oct-2025 08:56:08 UTC] Odoo connection info failed for username: system
+[20-Oct-2025 08:57:27 UTC] Odoo connection info failed for username: system
+[20-Oct-2025 08:57:27 UTC] Odoo connection info failed for username: system
+[20-Oct-2025 08:57:27 UTC] Odoo connection info failed for username: system
+[20-Oct-2025 08:57:48 UTC] Odoo connection info failed for username: system
+[20-Oct-2025 08:57:48 UTC] Odoo connection info failed for username: system
+[20-Oct-2025 08:57:48 UTC] Odoo connection info failed for username: system
+[20-Oct-2025 08:59:27 UTC] Odoo connection info failed for username: system
+[20-Oct-2025 08:59:27 UTC] Odoo connection info failed for username: system
+[20-Oct-2025 08:59:27 UTC] Odoo connection info failed for username: system
+[20-Oct-2025 09:00:53 UTC] Odoo connection info failed for username: system
+[20-Oct-2025 09:00:53 UTC] Odoo connection info failed for username: system
+[20-Oct-2025 09:00:53 UTC] Odoo connection info failed for username: system
+[20-Oct-2025 09:01:42 UTC] Odoo connection info failed for username: system
+[20-Oct-2025 09:01:53 UTC] Odoo connection info failed for username: system
+[20-Oct-2025 09:01:53 UTC] Odoo connection info failed for username: system
+[20-Oct-2025 09:01:53 UTC] Odoo connection info failed for username: system
+[20-Oct-2025 09:02:06 UTC] Odoo connection info failed for username: system
+[20-Oct-2025 09:02:06 UTC] Odoo connection info failed for username: system
+[20-Oct-2025 09:02:06 UTC] Odoo connection info failed for username: system
+[21-Oct-2025 00:38:32 UTC] Odoo connection info failed for username: system
+[21-Oct-2025 01:28:30 UTC] Odoo connection info failed for username: system
+[21-Oct-2025 01:31:58 UTC] Odoo connection info failed for username: system
+[21-Oct-2025 02:18:31 UTC] Odoo call failed for pt.om.ilung@gmail.com: HTTP 200, response: {"jsonrpc": "2.0", "id": 1, "error": {"code": 200, "message": "Odoo Server Error", "data": {"name": "builtins.ValueError", "debug": "Traceback (most recent call last):\n  File \"/home/odoo/src/odoo/odoo/http.py\", line 2166, in _transactioning\n    return service_model.retrying(func, env=self.env)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/odoo/src/odoo/odoo/service/model.py\", line 156, in retrying\n    result = func()\n             ^^^^^^\n  File \"/home/odoo/src/od
+[21-Oct-2025 02:30:19 UTC] Odoo call failed for it@omegamas.com: HTTP 200, response: {"jsonrpc": "2.0", "id": 1, "error": {"code": 200, "message": "Odoo Server Error", "data": {"name": "builtins.ValueError", "debug": "Traceback (most recent call last):\n  File \"/home/odoo/src/odoo/odoo/http.py\", line 2166, in _transactioning\n    return service_model.retrying(func, env=self.env)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/odoo/src/odoo/odoo/service/model.py\", line 156, in retrying\n    result = func()\n             ^^^^^^\n  File \"/home/odoo/src/od
+[21-Oct-2025 02:48:41 UTC] Odoo connection info failed for username: system
+[21-Oct-2025 02:48:47 UTC] Odoo connection info failed for username: system
+[21-Oct-2025 02:48:47 UTC] Odoo connection info failed for username: system
+[21-Oct-2025 02:48:47 UTC] Odoo connection info failed for username: system
+[21-Oct-2025 02:48:50 UTC] Odoo connection info failed for username: system
+[21-Oct-2025 02:48:50 UTC] Odoo connection info failed for username: system
+[21-Oct-2025 02:48:50 UTC] Odoo connection info failed for username: system
+[21-Oct-2025 02:49:49 UTC] Odoo call failed for it@omegamas.com: HTTP 200, response: {"jsonrpc": "2.0", "id": 1, "error": {"code": 200, "message": "Odoo Server Error", "data": {"name": "builtins.ValueError", "debug": "Traceback (most recent call last):\n  File \"/home/odoo/src/odoo/odoo/http.py\", line 2166, in _transactioning\n    return service_model.retrying(func, env=self.env)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/odoo/src/odoo/odoo/service/model.py\", line 156, in retrying\n    result = func()\n             ^^^^^^\n  File \"/home/odoo/src/od
+[21-Oct-2025 04:38:57 UTC] Odoo connection info failed for username: system
+[21-Oct-2025 09:14:38 UTC] Odoo connection info failed for username: system
+[21-Oct-2025 09:19:26 UTC] Odoo connection info failed for username: system
+[21-Oct-2025 09:20:02 UTC] Odoo connection info failed for username: system
+[21-Oct-2025 09:20:02 UTC] Odoo connection info failed for username: system
+[21-Oct-2025 09:20:02 UTC] Odoo connection info failed for username: system
+[21-Oct-2025 09:20:08 UTC] Odoo connection info failed for username: system
+[21-Oct-2025 09:20:08 UTC] Odoo connection info failed for username: system
+[21-Oct-2025 09:20:08 UTC] Odoo connection info failed for username: system
+[21-Oct-2025 09:20:20 UTC] Odoo connection info failed for username: system
+[21-Oct-2025 09:20:22 UTC] Odoo connection info failed for username: system
+[21-Oct-2025 09:20:41 UTC] Odoo connection info failed for username: system
+[21-Oct-2025 09:20:41 UTC] Odoo connection info failed for username: system
+[21-Oct-2025 09:20:41 UTC] Odoo connection info failed for username: system
+[21-Oct-2025 09:20:51 UTC] Odoo connection info failed for username: system
+[21-Oct-2025 09:20:51 UTC] Odoo connection info failed for username: system
+[21-Oct-2025 09:20:51 UTC] Odoo connection info failed for username: system
+[21-Oct-2025 09:20:54 UTC] Odoo connection info failed for username: system
+[21-Oct-2025 09:20:54 UTC] Odoo connection info failed for username: system
+[21-Oct-2025 09:20:54 UTC] Odoo connection info failed for username: system
+[21-Oct-2025 09:22:19 UTC] Odoo connection info failed for username: system
+[21-Oct-2025 09:22:57 UTC] Odoo connection info failed for username: system
+[21-Oct-2025 09:22:57 UTC] Odoo connection info failed for username: system
+[21-Oct-2025 09:22:57 UTC] Odoo connection info failed for username: system
+[21-Oct-2025 09:23:00 UTC] Odoo connection info failed for username: system
+[21-Oct-2025 09:23:00 UTC] Odoo connection info failed for username: system
+[21-Oct-2025 09:23:00 UTC] Odoo connection info failed for username: system
+[22-Oct-2025 00:44:31 UTC] Odoo connection info failed for username: system
+[22-Oct-2025 03:22:12 UTC] Odoo call failed for system: HTTP 200, response: {"jsonrpc": "2.0", "id": 1, "error": {"code": 200, "message": "Odoo Server Error", "data": {"name": "odoo.exceptions.UserError", "debug": "Traceback (most recent call last):\n  File \"/home/odoo/src/odoo/odoo/http.py\", line 2166, in _transactioning\n    return service_model.retrying(func, env=self.env)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/odoo/src/odoo/odoo/service/model.py\", line 156, in retrying\n    result = func()\n             ^^^^^^\n  File \"/home/odoo/
+[22-Oct-2025 04:19:30 UTC] Odoo call failed for pt.om.ilung@gmail.com: HTTP 200, response: {"jsonrpc": "2.0", "id": 1, "error": {"code": 200, "message": "Odoo Server Error", "data": {"name": "builtins.ValueError", "debug": "Traceback (most recent call last):\n  File \"/home/odoo/src/odoo/odoo/http.py\", line 2166, in _transactioning\n    return service_model.retrying(func, env=self.env)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/odoo/src/odoo/odoo/service/model.py\", line 156, in retrying\n    result = func()\n             ^^^^^^\n  File \"/home/odoo/src/od
+[22-Oct-2025 04:20:56 UTC] Odoo call failed for pt.om.ilung@gmail.com: HTTP 200, response: {"jsonrpc": "2.0", "id": 1, "error": {"code": 200, "message": "Odoo Server Error", "data": {"name": "builtins.ValueError", "debug": "Traceback (most recent call last):\n  File \"/home/odoo/src/odoo/odoo/http.py\", line 2166, in _transactioning\n    return service_model.retrying(func, env=self.env)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/odoo/src/odoo/odoo/service/model.py\", line 156, in retrying\n    result = func()\n             ^^^^^^\n  File \"/home/odoo/src/od
+[22-Oct-2025 04:21:05 UTC] Odoo call failed for pt.om.ilung@gmail.com: HTTP 200, response: {"jsonrpc": "2.0", "id": 1, "error": {"code": 200, "message": "Odoo Server Error", "data": {"name": "builtins.ValueError", "debug": "Traceback (most recent call last):\n  File \"/home/odoo/src/odoo/odoo/http.py\", line 2166, in _transactioning\n    return service_model.retrying(func, env=self.env)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/odoo/src/odoo/odoo/service/model.py\", line 156, in retrying\n    result = func()\n             ^^^^^^\n  File \"/home/odoo/src/od
+[27-Oct-2025 08:11:23 UTC] Odoo call failed for system: HTTP 200, response: {"jsonrpc": "2.0", "id": 1, "error": {"code": 200, "message": "Odoo Server Error", "data": {"name": "odoo.exceptions.UserError", "debug": "Traceback (most recent call last):\n  File \"/home/odoo/src/odoo/odoo/http.py\", line 2166, in _transactioning\n    return service_model.retrying(func, env=self.env)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/odoo/src/odoo/odoo/service/model.py\", line 156, in retrying\n    result = func()\n             ^^^^^^\n  File \"/home/odoo/
+[17-Nov-2025 04:26:46 UTC] Odoo call failed for system: HTTP 200, response: {"jsonrpc": "2.0", "id": 1, "error": {"code": 200, "message": "Odoo Server Error", "data": {"name": "odoo.exceptions.UserError", "debug": "Traceback (most recent call last):\n  File \"/home/odoo/src/odoo/odoo/http.py\", line 2166, in _transactioning\n    return service_model.retrying(func, env=self.env)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/odoo/src/odoo/odoo/service/model.py\", line 156, in retrying\n    result = func()\n             ^^^^^^\n  File \"/home/odoo/
+[17-Nov-2025 08:28:39 UTC] Odoo call failed for system: HTTP 200, response: {"jsonrpc": "2.0", "id": 1, "error": {"code": 200, "message": "Odoo Server Error", "data": {"name": "odoo.exceptions.UserError", "debug": "Traceback (most recent call last):\n  File \"/home/odoo/src/odoo/odoo/http.py\", line 2166, in _transactioning\n    return service_model.retrying(func, env=self.env)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/odoo/src/odoo/odoo/service/model.py\", line 156, in retrying\n    result = func()\n             ^^^^^^\n  File \"/home/odoo/
+[19-Nov-2025 00:33:30 UTC] Odoo call failed for system: HTTP 200, response: {"jsonrpc": "2.0", "id": 1, "error": {"code": 200, "message": "Odoo Server Error", "data": {"name": "builtins.ValueError", "debug": "Traceback (most recent call last):\n  File \"/home/odoo/src/odoo/odoo/http.py\", line 2166, in _transactioning\n    return service_model.retrying(func, env=self.env)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/odoo/src/odoo/odoo/service/model.py\", line 156, in retrying\n    result = func()\n             ^^^^^^\n  File \"/home/odoo/src/od
+[19-Nov-2025 09:18:45 UTC] Odoo call failed for system: HTTP 200, response: {"jsonrpc": "2.0", "id": 1, "error": {"code": 200, "message": "Odoo Server Error", "data": {"name": "odoo.exceptions.UserError", "debug": "Traceback (most recent call last):\n  File \"/home/odoo/src/odoo/odoo/http.py\", line 2166, in _transactioning\n    return service_model.retrying(func, env=self.env)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/odoo/src/odoo/odoo/service/model.py\", line 156, in retrying\n    result = func()\n             ^^^^^^\n  File \"/home/odoo/
+[19-Nov-2025 09:34:26 UTC] Odoo call failed for system: HTTP 200, response: {"jsonrpc": "2.0", "id": 1, "error": {"code": 200, "message": "Odoo Server Error", "data": {"name": "builtins.ValueError", "debug": "Traceback (most recent call last):\n  File \"/home/odoo/src/odoo/odoo/http.py\", line 2166, in _transactioning\n    return service_model.retrying(func, env=self.env)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/odoo/src/odoo/odoo/service/model.py\", line 156, in retrying\n    result = func()\n             ^^^^^^\n  File \"/home/odoo/src/od
+[21-Nov-2025 01:42:30 UTC] Odoo call failed for system: HTTP 200, response: {"jsonrpc": "2.0", "id": 1, "error": {"code": 200, "message": "Odoo Server Error", "data": {"name": "odoo.exceptions.MissingError", "debug": "Traceback (most recent call last):\n  File \"/home/odoo/src/odoo/odoo/http.py\", line 2166, in _transactioning\n    return service_model.retrying(func, env=self.env)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/odoo/src/odoo/odoo/service/model.py\", line 156, in retrying\n    result = func()\n             ^^^^^^\n  File \"/home/od
+[21-Nov-2025 03:38:41 UTC] Odoo call failed for system: HTTP 200, response: {"jsonrpc": "2.0", "id": 1, "error": {"code": 200, "message": "Odoo Server Error", "data": {"name": "builtins.ValueError", "debug": "Traceback (most recent call last):\n  File \"/home/odoo/src/odoo/odoo/http.py\", line 2166, in _transactioning\n    return service_model.retrying(func, env=self.env)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/odoo/src/odoo/odoo/service/model.py\", line 156, in retrying\n    result = func()\n             ^^^^^^\n  File \"/home/odoo/src/od
+[21-Nov-2025 03:59:52 UTC] Odoo call failed for system: HTTP 200, response: {"jsonrpc": "2.0", "id": 1, "error": {"code": 200, "message": "Odoo Server Error", "data": {"name": "builtins.ValueError", "debug": "Traceback (most recent call last):\n  File \"/home/odoo/src/odoo/odoo/http.py\", line 2166, in _transactioning\n    return service_model.retrying(func, env=self.env)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/odoo/src/odoo/odoo/service/model.py\", line 156, in retrying\n    result = func()\n             ^^^^^^\n  File \"/home/odoo/src/od
+[24-Nov-2025 03:33:21 UTC] Odoo call failed for system: HTTP 200, response: {"jsonrpc": "2.0", "id": 1, "error": {"code": 200, "message": "Odoo Server Error", "data": {"name": "odoo.exceptions.UserError", "debug": "Traceback (most recent call last):\n  File \"/home/odoo/src/odoo/odoo/http.py\", line 2166, in _transactioning\n    return service_model.retrying(func, env=self.env)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/odoo/src/odoo/odoo/service/model.py\", line 156, in retrying\n    result = func()\n             ^^^^^^\n  File \"/home/odoo/
+[24-Nov-2025 03:33:21 UTC] Odoo call failed for system: HTTP 200, response: {"jsonrpc": "2.0", "id": 1, "error": {"code": 200, "message": "Odoo Server Error", "data": {"name": "odoo.exceptions.UserError", "debug": "Traceback (most recent call last):\n  File \"/home/odoo/src/odoo/odoo/http.py\", line 2166, in _transactioning\n    return service_model.retrying(func, env=self.env)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/odoo/src/odoo/odoo/service/model.py\", line 156, in retrying\n    result = func()\n             ^^^^^^\n  File \"/home/odoo/
+[24-Nov-2025 03:33:21 UTC] Odoo call failed for system: HTTP 200, response: {"jsonrpc": "2.0", "id": 1, "error": {"code": 200, "message": "Odoo Server Error", "data": {"name": "odoo.exceptions.UserError", "debug": "Traceback (most recent call last):\n  File \"/home/odoo/src/odoo/odoo/http.py\", line 2166, in _transactioning\n    return service_model.retrying(func, env=self.env)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/odoo/src/odoo/odoo/service/model.py\", line 156, in retrying\n    result = func()\n             ^^^^^^\n  File \"/home/odoo/
+[24-Nov-2025 03:33:21 UTC] Odoo call failed for system: HTTP 200, response: {"jsonrpc": "2.0", "id": 1, "error": {"code": 200, "message": "Odoo Server Error", "data": {"name": "odoo.exceptions.UserError", "debug": "Traceback (most recent call last):\n  File \"/home/odoo/src/odoo/odoo/http.py\", line 2166, in _transactioning\n    return service_model.retrying(func, env=self.env)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/odoo/src/odoo/odoo/service/model.py\", line 156, in retrying\n    result = func()\n             ^^^^^^\n  File \"/home/odoo/
+[24-Nov-2025 03:33:21 UTC] Odoo call failed for system: HTTP 200, response: {"jsonrpc": "2.0", "id": 1, "error": {"code": 200, "message": "Odoo Server Error", "data": {"name": "odoo.exceptions.UserError", "debug": "Traceback (most recent call last):\n  File \"/home/odoo/src/odoo/odoo/http.py\", line 2166, in _transactioning\n    return service_model.retrying(func, env=self.env)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/odoo/src/odoo/odoo/service/model.py\", line 156, in retrying\n    result = func()\n             ^^^^^^\n  File \"/home/odoo/
+[24-Nov-2025 03:33:21 UTC] Odoo call failed for system: HTTP 200, response: {"jsonrpc": "2.0", "id": 1, "error": {"code": 200, "message": "Odoo Server Error", "data": {"name": "odoo.exceptions.UserError", "debug": "Traceback (most recent call last):\n  File \"/home/odoo/src/odoo/odoo/http.py\", line 2166, in _transactioning\n    return service_model.retrying(func, env=self.env)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/odoo/src/odoo/odoo/service/model.py\", line 156, in retrying\n    result = func()\n             ^^^^^^\n  File \"/home/odoo/
+[24-Nov-2025 03:33:21 UTC] Odoo call failed for system: HTTP 200, response: {"jsonrpc": "2.0", "id": 1, "error": {"code": 200, "message": "Odoo Server Error", "data": {"name": "odoo.exceptions.UserError", "debug": "Traceback (most recent call last):\n  File \"/home/odoo/src/odoo/odoo/http.py\", line 2166, in _transactioning\n    return service_model.retrying(func, env=self.env)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/odoo/src/odoo/odoo/service/model.py\", line 156, in retrying\n    result = func()\n             ^^^^^^\n  File \"/home/odoo/
+[24-Nov-2025 04:44:05 UTC] Odoo call failed for system: HTTP 200, response: {"jsonrpc": "2.0", "id": 1, "error": {"code": 200, "message": "Odoo Server Error", "data": {"name": "odoo.exceptions.UserError", "debug": "Traceback (most recent call last):\n  File \"/home/odoo/src/odoo/odoo/http.py\", line 2166, in _transactioning\n    return service_model.retrying(func, env=self.env)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/odoo/src/odoo/odoo/service/model.py\", line 156, in retrying\n    result = func()\n             ^^^^^^\n  File \"/home/odoo/
+[28-Nov-2025 08:39:04 UTC] Odoo call failed for system: HTTP 200, response: {"jsonrpc": "2.0", "id": 1, "error": {"code": 200, "message": "Odoo Server Error", "data": {"name": "odoo.exceptions.UserError", "debug": "Traceback (most recent call last):\n  File \"/home/odoo/src/odoo/odoo/http.py\", line 2166, in _transactioning\n    return service_model.retrying(func, env=self.env)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/odoo/src/odoo/odoo/service/model.py\", line 156, in retrying\n    result = func()\n             ^^^^^^\n  File \"/home/odoo/
+[28-Nov-2025 08:39:04 UTC] Odoo call failed for system: HTTP 200, response: {"jsonrpc": "2.0", "id": 1, "error": {"code": 200, "message": "Odoo Server Error", "data": {"name": "odoo.exceptions.UserError", "debug": "Traceback (most recent call last):\n  File \"/home/odoo/src/odoo/odoo/http.py\", line 2166, in _transactioning\n    return service_model.retrying(func, env=self.env)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/odoo/src/odoo/odoo/service/model.py\", line 156, in retrying\n    result = func()\n             ^^^^^^\n  File \"/home/odoo/
+[28-Nov-2025 08:39:04 UTC] Odoo call failed for system: HTTP 200, response: {"jsonrpc": "2.0", "id": 1, "error": {"code": 200, "message": "Odoo Server Error", "data": {"name": "odoo.exceptions.UserError", "debug": "Traceback (most recent call last):\n  File \"/home/odoo/src/odoo/odoo/http.py\", line 2166, in _transactioning\n    return service_model.retrying(func, env=self.env)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/odoo/src/odoo/odoo/service/model.py\", line 156, in retrying\n    result = func()\n             ^^^^^^\n  File \"/home/odoo/
+[02-Dec-2025 01:21:09 UTC] Odoo call failed for pt.om.gudang@gmail.com: HTTP 200, response: {"jsonrpc": "2.0", "id": 1, "error": {"code": 200, "message": "Odoo Server Error", "data": {"name": "odoo.exceptions.UserError", "debug": "Traceback (most recent call last):\n  File \"/home/odoo/src/odoo/odoo/http.py\", line 2166, in _transactioning\n    return service_model.retrying(func, env=self.env)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/odoo/src/odoo/odoo/service/model.py\", line 156, in retrying\n    result = func()\n             ^^^^^^\n  File \"/home/odoo/
+[04-Dec-2025 02:38:07 UTC] Odoo call failed for system: HTTP 200, response: {"jsonrpc": "2.0", "id": 1, "error": {"code": 200, "message": "Odoo Server Error", "data": {"name": "builtins.ValueError", "debug": "Traceback (most recent call last):\n  File \"/home/odoo/src/odoo/odoo/http.py\", line 2166, in _transactioning\n    return service_model.retrying(func, env=self.env)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/odoo/src/odoo/odoo/service/model.py\", line 156, in retrying\n    result = func()\n             ^^^^^^\n  File \"/home/odoo/src/od
