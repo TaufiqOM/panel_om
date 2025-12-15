@@ -79,7 +79,7 @@ if (is_array($batches) && count($batches) > 0) {
 
         // Insert shipping_detail
         if (!empty($batch['picking_ids'])) {
-            $pickings = callOdooRead($username, 'stock.picking', [['id', 'in', $batch['picking_ids']]], ['name', 'sale_id', 'origin', 'group_id', 'move_line_ids_without_package']);
+            $pickings = callOdooRead($username, 'stock.picking', [['id', 'in', $batch['picking_ids']]], ['name', 'sale_id', 'origin', 'group_id', 'move_line_ids_without_package', 'state']);
             if ($pickings) {
                 // Delete existing shipping_detail for this shipping
                 $stmt_del = $conn->prepare("DELETE FROM shipping_detail WHERE id_shipping = ?");
@@ -107,10 +107,20 @@ if (is_array($batches) && count($batches) > 0) {
                     }
                 }
 
+                // Kumpulkan picking yang state = "done" untuk insert ke manual stuffing
+                $done_pickings = [];
+                
                 // Insert each picking into shipping_detail
                 foreach ($pickings as $picking) {
                     $picking_id = $picking['id'];
                     $picking_name = $picking['name'];
+                    
+                    // Check if picking state is "done"
+                    $picking_state = strtolower(trim($picking['state'] ?? ''));
+                    if ($picking_state === 'done') {
+                        $done_pickings[] = $picking_id;
+                    }
+                    
                     $sale_id = null;
                     if (is_array($picking['sale_id']) && count($picking['sale_id']) > 0) {
                         $sale_id = $picking['sale_id'][0];
@@ -166,6 +176,47 @@ if (is_array($batches) && count($batches) > 0) {
                                     $stmt_lot->close();
                                 }
                             }
+                        }
+                    }
+                }
+                
+                // Insert lot_ids ke shipping_manual_stuffing untuk picking yang state = "done"
+                if (!empty($done_pickings)) {
+                    $done_pickings_safe = array_map('intval', $done_pickings);
+                    $done_pickings_safe = array_filter($done_pickings_safe);
+                    
+                    if (!empty($done_pickings_safe)) {
+                        $picking_ids_str = implode(',', $done_pickings_safe);
+                        
+                        // Ambil semua lot_ids dari shipping_lot_ids untuk picking yang done
+                        $sql_lots = "SELECT DISTINCT lot_name FROM shipping_lot_ids WHERE picking_id IN ($picking_ids_str) AND lot_name IS NOT NULL AND lot_name != ''";
+                        $result_lots = mysqli_query($conn, $sql_lots);
+                        
+                        if ($result_lots && mysqli_num_rows($result_lots) > 0) {
+                            while ($lot_row = mysqli_fetch_assoc($result_lots)) {
+                                $lot_name = trim($lot_row['lot_name']);
+                                
+                                if (empty($lot_name)) {
+                                    continue;
+                                }
+                                
+                                // Check if already exists
+                                $stmt_check = $conn->prepare("SELECT id FROM shipping_manual_stuffing WHERE id_shipping = ? AND production_code = ?");
+                                $stmt_check->bind_param("is", $shipping_id, $lot_name);
+                                $stmt_check->execute();
+                                $check_result = $stmt_check->get_result();
+                                $exists = $check_result->num_rows > 0;
+                                $stmt_check->close();
+                                
+                                // Insert only if not exists
+                                if (!$exists) {
+                                    $stmt_manual = $conn->prepare("INSERT INTO shipping_manual_stuffing (id_shipping, production_code, status) VALUES (?, ?, 1)");
+                                    $stmt_manual->bind_param("is", $shipping_id, $lot_name);
+                                    $stmt_manual->execute();
+                                    $stmt_manual->close();
+                                }
+                            }
+                            mysqli_free_result($result_lots);
                         }
                     }
                 }

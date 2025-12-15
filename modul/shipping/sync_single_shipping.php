@@ -67,8 +67,8 @@ try {
         exit;
     }
     
-    // Get pickings dengan move_line_ids
-    $pickings = callOdooRead($username, 'stock.picking', [['id', 'in', $picking_ids]], ['name', 'sale_id', 'origin', 'group_id', 'move_line_ids_without_package']);
+    // Get pickings dengan move_line_ids dan state
+    $pickings = callOdooRead($username, 'stock.picking', [['id', 'in', $picking_ids]], ['name', 'sale_id', 'origin', 'group_id', 'move_line_ids_without_package', 'state']);
     
     if (!$pickings) {
         echo json_encode(['success' => false, 'message' => 'Gagal mengambil data picking dari Odoo']);
@@ -102,10 +102,20 @@ try {
     $stmt_del->close();
     
     $updated_pickings = 0;
+    $done_pickings = [];
     
     // Insert each picking into shipping_detail
     foreach ($pickings as $picking) {
         $picking_id = $picking['id'];
+        
+        // Check if picking state is "done" (case insensitive)
+        $picking_state = strtolower(trim($picking['state'] ?? ''));
+        error_log("Picking ID: $picking_id, State: " . ($picking['state'] ?? 'NULL'));
+        
+        if ($picking_state === 'done') {
+            $done_pickings[] = $picking_id;
+            error_log("Picking $picking_id is DONE - will insert lot_ids to manual stuffing");
+        }
         $picking_name = $picking['name'];
         $sale_id = null;
         if (is_array($picking['sale_id']) && count($picking['sale_id']) > 0) {
@@ -169,10 +179,122 @@ try {
         }
     }
     
+    // Step: Insert lot_ids ke shipping_manual_stuffing untuk picking yang state = "done"
+    $inserted_manual = 0;
+    $debug_info = [];
+    
+    error_log("=== Manual Stuffing Insert Process ===");
+    error_log("Done pickings count: " . count($done_pickings));
+    error_log("Done picking IDs: " . json_encode($done_pickings));
+    error_log("Shipping ID: $shipping_id");
+    
+    if (!empty($done_pickings)) {
+        // Sanitize picking IDs untuk query
+        $done_pickings_safe = array_map('intval', $done_pickings);
+        $done_pickings_safe = array_filter($done_pickings_safe);
+        
+        if (!empty($done_pickings_safe)) {
+            $picking_ids_str = implode(',', $done_pickings_safe);
+            
+            // Ambil semua lot_ids dari shipping_lot_ids untuk picking yang done
+            $sql_lots = "SELECT DISTINCT lot_name FROM shipping_lot_ids WHERE picking_id IN ($picking_ids_str) AND lot_name IS NOT NULL AND lot_name != ''";
+            error_log("Query: $sql_lots");
+            
+            $result_lots = mysqli_query($conn, $sql_lots);
+            
+            if ($result_lots) {
+                $lot_count = mysqli_num_rows($result_lots);
+                error_log("Found $lot_count lot names in shipping_lot_ids for done pickings");
+                
+                if ($lot_count > 0) {
+                    while ($lot_row = mysqli_fetch_assoc($result_lots)) {
+                        $lot_name = trim($lot_row['lot_name']);
+                        
+                        if (empty($lot_name)) {
+                            continue;
+                        }
+                        
+                        error_log("Processing lot_name: $lot_name");
+                        
+                        // Check if already exists
+                        $stmt_check = $conn->prepare("SELECT id FROM shipping_manual_stuffing WHERE id_shipping = ? AND production_code = ?");
+                        $stmt_check->bind_param("is", $shipping_id, $lot_name);
+                        $stmt_check->execute();
+                        $check_result = $stmt_check->get_result();
+                        $exists = $check_result->num_rows > 0;
+                        $stmt_check->close();
+                        
+                        if ($exists) {
+                            error_log("Lot already exists: $lot_name");
+                            continue;
+                        }
+                        
+                        // Insert to manual stuffing
+                        $stmt_manual = $conn->prepare("INSERT INTO shipping_manual_stuffing (id_shipping, production_code, status) VALUES (?, ?, 1)");
+                        $stmt_manual->bind_param("is", $shipping_id, $lot_name);
+                        
+                        if ($stmt_manual->execute()) {
+                            $inserted_manual++;
+                            error_log("✓ Successfully inserted: $lot_name (shipping_id: $shipping_id)");
+                        } else {
+                            error_log("✗ Failed to insert: $lot_name - Error: " . $stmt_manual->error);
+                            $debug_info[] = "Error inserting $lot_name: " . $stmt_manual->error;
+                        }
+                        $stmt_manual->close();
+                    }
+                    mysqli_free_result($result_lots);
+                } else {
+                    error_log("No lot names found in shipping_lot_ids for done pickings");
+                    $debug_info[] = "Tidak ada lot_ids ditemukan untuk picking yang done";
+                    
+                    // Debug: Check if lot_ids exist at all for these pickings
+                    $sql_debug = "SELECT picking_id, COUNT(*) as count FROM shipping_lot_ids WHERE picking_id IN ($picking_ids_str) GROUP BY picking_id";
+                    $result_debug = mysqli_query($conn, $sql_debug);
+                    if ($result_debug) {
+                        while ($row = mysqli_fetch_assoc($result_debug)) {
+                            error_log("Picking ID {$row['picking_id']} has {$row['count']} lot_ids");
+                        }
+                        mysqli_free_result($result_debug);
+                    }
+                }
+            } else {
+                error_log("Query failed: " . mysqli_error($conn));
+                $debug_info[] = "Error executing query: " . mysqli_error($conn);
+            }
+        } else {
+            error_log("No valid picking IDs after sanitization");
+            $debug_info[] = "Tidak ada picking ID yang valid";
+        }
+    } else {
+        $all_states = [];
+        foreach ($pickings as $p) {
+            $all_states[] = $p['state'] ?? 'NULL';
+        }
+        error_log("No done pickings found. All picking states: " . json_encode($all_states));
+        $debug_info[] = "Tidak ada picking dengan state 'done'. States yang ditemukan: " . implode(', ', array_unique($all_states));
+    }
+    
+    error_log("Total inserted to manual stuffing: $inserted_manual");
+    error_log("=== End Manual Stuffing Insert ===");
+    
+    $message = "Sinkron selesai! $updated_pickings picking dan lot/serial berhasil diperbarui";
+    if ($inserted_manual > 0) {
+        $message .= ". $inserted_manual lot/serial dari picking yang sudah done ditambahkan ke manual stuffing";
+    } else if (!empty($done_pickings)) {
+        $message .= ". Picking yang done ditemukan (" . count($done_pickings) . ") tapi tidak ada lot_ids untuk diinsert";
+        if (!empty($debug_info)) {
+            $message .= " - " . implode(", ", $debug_info);
+        }
+    }
+    
     echo json_encode([
         'success' => true,
-        'message' => "Sinkron selesai! $updated_pickings picking dan lot/serial berhasil diperbarui",
+        'message' => $message,
         'updated_pickings' => $updated_pickings,
+        'inserted_manual' => $inserted_manual,
+        'done_pickings_count' => count($done_pickings),
+        'done_picking_ids' => $done_pickings,
+        'debug_info' => $debug_info,
         'shipping_name' => $batch_name
     ]);
     
