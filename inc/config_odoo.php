@@ -115,7 +115,7 @@ function callOdooCreate($username, $model, $data) {
 /**
  * Fungsi khusus untuk write data
  */
-function callOdooWrite($username, $model, $ids = [], $data) {
+function callOdooWrite($username, $model, $ids = [], $data = []) {
     return callOdoo($username, $model, 'write', [$ids, $data]);
 }
 

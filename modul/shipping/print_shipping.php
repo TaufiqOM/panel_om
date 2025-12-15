@@ -62,6 +62,33 @@ foreach ($raw_data as $row) {
     $grouped_data[$product_name][] = $row;
 }
 
+// Query untuk mengambil data pickings dan lot_ids dari sync Odoo
+$query_pickings = "SELECT id, name, sale_id, client_order_ref FROM shipping_detail WHERE id_shipping = ? ORDER BY name";
+$stmt_pickings = $conn->prepare($query_pickings);
+$stmt_pickings->bind_param("i", $shipping_id);
+$stmt_pickings->execute();
+$result_pickings = $stmt_pickings->get_result();
+$pickings_data = [];
+while ($row = $result_pickings->fetch_assoc()) {
+    $picking_id = $row['id'];
+    
+    // Ambil lot_ids untuk picking ini
+    $query_lots = "SELECT lot_name, product_name, qty_done FROM shipping_lot_ids WHERE picking_id = ? ORDER BY product_name, lot_name";
+    $stmt_lots = $conn->prepare($query_lots);
+    $stmt_lots->bind_param("i", $picking_id);
+    $stmt_lots->execute();
+    $result_lots = $stmt_lots->get_result();
+    $lots = [];
+    while ($lot_row = $result_lots->fetch_assoc()) {
+        $lots[] = $lot_row;
+    }
+    $stmt_lots->close();
+    
+    $row['lots'] = $lots;
+    $pickings_data[] = $row;
+}
+$stmt_pickings->close();
+
 ?>
 <!DOCTYPE html>
 <html lang="id">
@@ -411,6 +438,59 @@ foreach ($raw_data as $row) {
             <div class="info-value"><?= htmlspecialchars($shipping['ship_to']) ?></div>
         </div>
     </div>
+    
+    <?php if (count($pickings_data) > 0): ?>
+    <div class="table-container">
+        <div class="table-title">Pickings & Lot/Serial Numbers (From Odoo Sync)</div>
+        
+        <table class="main-table">
+            <thead>
+                <tr>
+                    <th style="width: 5%;">No</th>
+                    <th style="width: 20%;">Picking Name</th>
+                    <th style="width: 20%;">Client Order Ref (PO)</th>
+                    <th style="width: 55%;">Lot/Serial Numbers</th>
+                </tr>
+            </thead>
+            <tbody>
+                <?php 
+                $picking_no = 1;
+                foreach ($pickings_data as $picking): 
+                ?>
+                    <tr>
+                        <td class="text-center"><?= $picking_no++ ?></td>
+                        <td class="text-left"><?= htmlspecialchars($picking['name']) ?></td>
+                        <td class="text-left"><?= htmlspecialchars($picking['client_order_ref'] ?: '-') ?></td>
+                        <td class="text-left">
+                            <?php if (count($picking['lots']) > 0): ?>
+                                <table style="width: 100%; border: none; margin: 0;">
+                                    <thead style="background-color: #e0e0e0;">
+                                        <tr>
+                                            <th style="width: 40%; background-color: #e0e0e0; color: #000; border: 1px solid #ccc; padding: 2px; font-size: 7pt;">Lot/Serial</th>
+                                            <th style="width: 45%; background-color: #e0e0e0; color: #000; border: 1px solid #ccc; padding: 2px; font-size: 7pt;">Product</th>
+                                            <th style="width: 15%; background-color: #e0e0e0; color: #000; border: 1px solid #ccc; padding: 2px; font-size: 7pt;">Qty</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <?php foreach ($picking['lots'] as $lot): ?>
+                                            <tr>
+                                                <td style="border: 1px solid #ddd; padding: 2px; font-size: 7pt;"><?= htmlspecialchars($lot['lot_name']) ?></td>
+                                                <td style="border: 1px solid #ddd; padding: 2px; font-size: 7pt;"><?= htmlspecialchars($lot['product_name']) ?></td>
+                                                <td style="border: 1px solid #ddd; padding: 2px; font-size: 7pt; text-align: right;"><?= htmlspecialchars($lot['qty_done']) ?></td>
+                                            </tr>
+                                        <?php endforeach; ?>
+                                    </tbody>
+                                </table>
+                            <?php else: ?>
+                                <span class="text-muted">No lot/serial numbers</span>
+                            <?php endif; ?>
+                        </td>
+                    </tr>
+                <?php endforeach; ?>
+            </tbody>
+        </table>
+    </div>
+    <?php endif; ?>
     
     <div class="table-container">
         <div class="table-title">Product List</div>
