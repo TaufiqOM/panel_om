@@ -78,7 +78,7 @@ foreach ($raw_data as $row) {
         
         body {
             font-family: 'Arial', 'Helvetica', sans-serif;
-            font-size: 10pt;
+            font-size: 9pt;
             line-height: 1.4;
             color: #000;
             padding: 15mm;
@@ -87,28 +87,28 @@ foreach ($raw_data as $row) {
         
         .print-header {
             text-align: center;
-            margin-bottom: 20px;
-            border-bottom: 3px solid #000;
-            padding-bottom: 10px;
+            margin-bottom: 15px;
+            border-bottom: 2px solid #000;
+            padding-bottom: 8px;
         }
         
         .print-header h1 {
-            font-size: 18pt;
+            font-size: 16pt;
             font-weight: bold;
-            margin-bottom: 5px;
+            margin-bottom: 3px;
             color: #000;
             text-transform: uppercase;
             letter-spacing: 1px;
         }
         
         .print-header .subtitle {
-            font-size: 12pt;
+            font-size: 9pt;
             color: #000;
             font-weight: normal;
         }
         
         .info-section {
-            margin-bottom: 15px;
+            margin-bottom: 10px;
             display: table;
             width: 100%;
         }
@@ -121,58 +121,92 @@ foreach ($raw_data as $row) {
             display: table-cell;
             font-weight: bold;
             width: 30%;
-            padding: 5px 10px 5px 0;
+            padding: 3px 10px 3px 0;
             vertical-align: top;
             color: #000;
-            font-size: 10pt;
+            font-size: 9pt;
         }
         
         .info-value {
             display: table-cell;
-            padding: 5px 0;
+            padding: 3px 0;
             color: #000;
-            font-size: 10pt;
+            font-size: 9pt;
         }
         
         .table-container {
-            margin-top: 20px;
+            margin-top: 10px;
             page-break-inside: avoid;
         }
         
         .table-title {
-            font-size: 12pt;
+            font-size: 11pt;
             font-weight: bold;
-            margin-bottom: 10px;
+            margin-bottom: 8px;
             text-transform: uppercase;
-            border-bottom: 2px solid #000;
-            padding-bottom: 5px;
-        }
-        
-        .product-group {
-            margin-bottom: 20px;
-            page-break-inside: avoid;
-        }
-        
-        .product-group-header {
-            background-color: #333;
-            color: #fff;
-            padding: 8px 10px;
-            font-weight: bold;
-            font-size: 10pt;
-            border: 1px solid #000;
-            margin-bottom: 0;
-        }
-        
-        .product-group-table {
-            border-top: none;
-            margin-top: 0;
+            border-bottom: 1px solid #000;
+            padding-bottom: 3px;
         }
         
         table {
             width: 100%;
             border-collapse: collapse;
             margin-top: 10px;
-            border: 2px solid #000;
+        }
+        
+        table.main-table {
+            border: 1px solid #000;
+        }
+        
+        .product-row {
+            background-color: white;
+        }
+        
+        .product-row td {
+            font-weight: bold;
+            padding: 4px 3px;
+        }
+        
+        .detail-row {
+            background-color: #fafafa;
+        }
+        
+        .detail-table {
+            width: 100%;
+            border: none;
+            margin: 0;
+        }
+        
+        .detail-table td {
+            border: none;
+            border-bottom: 1px solid #ddd;
+            padding: 2px 3px;
+            font-size: 7pt;
+        }
+        
+        .detail-table tr:last-child td {
+            border-bottom: none;
+        }
+        
+        .detail-table th {
+            background-color: #808080;
+            color: #000;
+            border: none;
+            border-bottom: 1px solid #ccc;
+            padding: 3px;
+            font-size: 7pt;
+            text-align: left;
+        }
+        
+        .warna-label {
+            font-weight: bold;
+            margin: 0;
+            padding: 2px 3px;
+            background-color: #f5f5f5;
+            font-size: 8pt;
+            color: #000;
+            border-left: none;
+            border-right: none;
         }
         
         thead {
@@ -182,27 +216,24 @@ foreach ($raw_data as $row) {
         
         th {
             border: 1px solid #000;
-            padding: 8px 6px;
+            padding: 4px 3px;
             text-align: center;
             font-weight: bold;
-            font-size: 9pt;
+            font-size: 8pt;
             background-color: #000;
             color: #fff;
         }
         
         td {
             border: 1px solid #000;
-            padding: 6px;
-            font-size: 9pt;
+            padding: 3px;
+            font-size: 8pt;
             color: #000;
+            vertical-align: top;
         }
         
         tbody tr {
             background-color: #fff;
-        }
-        
-        tbody tr:nth-child(even) {
-            background-color: #f5f5f5;
         }
         
         .text-center {
@@ -213,6 +244,10 @@ foreach ($raw_data as $row) {
             text-align: left;
         }
         
+        .text-right {
+            text-align: right;
+        }
+        
         .no-data {
             padding: 20px;
             text-align: center;
@@ -220,12 +255,22 @@ foreach ($raw_data as $row) {
             font-style: italic;
         }
         
+        .footer-row {
+            background-color: #f0f0f0;
+        }
+        
+        .footer-row td {
+            font-weight: bold;
+            padding: 6px;
+            font-size: 9pt;
+        }
+        
         .print-footer {
-            margin-top: 30px;
-            padding-top: 10px;
+            margin-top: 15px;
+            padding-top: 8px;
             border-top: 1px solid #000;
             text-align: right;
-            font-size: 8pt;
+            font-size: 7pt;
             color: #000;
         }
         
@@ -253,21 +298,33 @@ foreach ($raw_data as $row) {
             }
             
             body {
-                padding: 10mm;
+                padding: 5mm;
+                margin: 0;
                 -webkit-print-color-adjust: exact;
                 print-color-adjust: exact;
             }
             
             @page {
-                size: A4;
-                margin: 10mm;
+                size: A4 portrait;
+                margin: 15mm;
             }
             
             .print-header {
                 page-break-after: avoid;
+                margin-bottom: 8px;
+            }
+            
+            .info-section {
+                page-break-after: avoid;
+                margin-bottom: 5px;
             }
             
             .table-container {
+                page-break-inside: auto;
+                margin-top: 5px;
+            }
+            
+            table.main-table {
                 page-break-inside: auto;
             }
             
@@ -285,14 +342,40 @@ foreach ($raw_data as $row) {
                 print-color-adjust: exact;
             }
             
-            .product-group-header {
-                background-color: #333 !important;
-                color: #fff !important;
+            .product-row {
+                page-break-after: avoid;
+                page-break-inside: avoid;
+            }
+            
+            .product-row td {
+                font-weight: bold !important;
                 -webkit-print-color-adjust: exact;
                 print-color-adjust: exact;
             }
             
-            tbody tr:nth-child(even) {
+            .detail-row {
+                page-break-before: avoid;
+                page-break-inside: auto;
+                background-color: #fafafa !important;
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+            }
+            
+            .detail-table th {
+                background-color: #808080 !important;
+                color: #000 !important;
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+            }
+            
+            .footer-row {
+                background-color: #f0f0f0 !important;
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+                page-break-inside: avoid;
+            }
+            
+            .warna-label {
                 background-color: #f5f5f5 !important;
                 -webkit-print-color-adjust: exact;
                 print-color-adjust: exact;
@@ -300,10 +383,6 @@ foreach ($raw_data as $row) {
             
             tfoot {
                 display: table-footer-group;
-            }
-            
-            tr {
-                page-break-inside: avoid;
             }
         }
     </style>
@@ -337,47 +416,91 @@ foreach ($raw_data as $row) {
         <div class="table-title">Product List</div>
         
         <?php if (count($grouped_data) > 0): ?>
-            <?php 
-            $global_no = 1;
-            $total_items = 0;
-            foreach ($grouped_data as $product_name => $items): 
-                $total_items += count($items);
-            ?>
-                <div class="product-group">
-                    <div class="product-group-header">
-                        Product: <?= htmlspecialchars($product_name ?: 'Unknown') ?> (<?= count($items) ?> item<?= count($items) > 1 ? 's' : '' ?>)
-                    </div>
-                    <table class="product-group-table">
-                        <thead>
-                            <tr>
-                                <th style="width: 8%;">No</th>
-                                <th style="width: 35%;">Production Code</th>
-                                <th style="width: 20%;">Created Time</th>
-                                <th style="width: 37%;">Client Order Ref (PO)</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <?php foreach ($items as $data): ?>
-                                <tr>
-                                    <td class="text-center"><?= $global_no++ ?></td>
-                                    <td class="text-left"><?= htmlspecialchars($data['production_code'] ?? '-') ?></td>
-                                    <td class="text-center"><?= htmlspecialchars($data['created_time'] ?? '-') ?></td>
-                                    <td class="text-left"><?= htmlspecialchars($data['client_order_ref'] ?? '-') ?></td>
-                                </tr>
-                            <?php endforeach; ?>
-                        </tbody>
-                    </table>
-                </div>
-            <?php endforeach; ?>
-            
-            <div style="margin-top: 15px; padding: 10px; background-color: #e0e0e0; border: 1px solid #000; font-weight: bold; text-align: center;">
-                Total Items: <?= $total_items ?>
-            </div>
+            <table class="main-table">
+                <thead>
+                    <tr>
+                        <th style="width: 3%;">No</th>
+                        <th style="width: 10%;">ID Produk</th>
+                        <th style="width: 30%;">Nama Produk</th>
+                        <th style="width: 7%;">M3</th>
+                        <th style="width: 7%;">Qty</th>
+                        <th style="width: 10%;">Tot. Part</th>
+                        <th style="width: 10%;">Tot. M3</th>
+                        <th style="width: 13%;">L. Perm</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php 
+                    $product_no = 1;
+                    $total_items = 0;
+                    foreach ($grouped_data as $product_name => $items): 
+                        $total_items += count($items);
+                        $detail_no = 1;
+                    ?>
+                        <!-- Product Row -->
+                        <tr class="product-row">
+                            <td class="text-center"><?= $product_no++ ?></td>
+                            <td class="text-left">##</td>
+                            <td class="text-left"><?= htmlspecialchars($product_name ?: 'Unknown') ?></td>
+                            <td class="text-right">##</td>
+                            <td class="text-right">##</td>
+                            <td class="text-right">##</td>
+                            <td class="text-right">##</td>
+                            <td class="text-right">##</td>
+                        </tr>
+                        <!-- Detail Row -->
+                        <tr class="detail-row">
+                            <td colspan="8" style="padding: 0; border-left: none; border-right: none;">
+                                <div class="warna-label">Warna : ##</div>
+                                <table class="detail-table">
+                                    <thead>
+                                        <tr>
+                                            <th style="width: 8%;">No</th>
+                                            <th style="width: 30%;">No Produk</th>
+                                            <th style="width: 20%;">Jam Proses</th>
+                                            <th style="width: 42%;">ID Order</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <?php foreach ($items as $data): ?>
+                                            <tr>
+                                                <td class="text-center"><?= $detail_no++ ?></td>
+                                                <td class="text-left"><?= htmlspecialchars($data['production_code'] ?? '-') ?></td>
+                                                <td class="text-center"><?= htmlspecialchars($data['created_time'] ?? '-') ?></td>
+                                                <td class="text-left"><?= htmlspecialchars($data['client_order_ref'] ?? '-') ?></td>
+                                            </tr>
+                                        <?php endforeach; ?>
+                                    </tbody>
+                                </table>
+                            </td>
+                        </tr>
+                    <?php endforeach; ?>
+                    
+                    <!-- Footer Row -->
+                    <tr class="footer-row">
+                        <td colspan="8">
+                            <strong>Jumlah Barang : <?= $total_items ?></strong>
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
         <?php else: ?>
-            <table>
+            <table class="main-table">
+                <thead>
+                    <tr>
+                        <th style="width: 3%;">No</th>
+                        <th style="width: 10%;">ID Produk</th>
+                        <th style="width: 30%;">Nama Produk</th>
+                        <th style="width: 7%;">M3</th>
+                        <th style="width: 7%;">Qty</th>
+                        <th style="width: 10%;">Tot. Part</th>
+                        <th style="width: 10%;">Tot. M3</th>
+                        <th style="width: 13%;">L. Perm</th>
+                    </tr>
+                </thead>
                 <tbody>
                     <tr>
-                        <td colspan="4" class="no-data">Tidak ada data ditemukan</td>
+                        <td colspan="8" class="no-data">Tidak ada data ditemukan</td>
                     </tr>
                 </tbody>
             </table>

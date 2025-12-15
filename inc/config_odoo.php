@@ -29,14 +29,24 @@ function odooConnectionInfo($username){
     $result = $stmt->get_result()->fetch_assoc();
     $stmt->close();
 
+    // if ($result) {
+    //     return [
+    //         'url'      => 'https://om-omegamas.odoo.com/jsonrpc', //url odoo
+    //         'db'       => 'om-omegamas-main-17240508', // db odoo
+    //         'uid'      => (int)$result['uid'],
+    //         'password' => decrypt_password($result['password']),
+    //     ];
+    // }
+
     if ($result) {
         return [
-            'url'      => 'https://om-omegamas.odoo.com/jsonrpc', //url odoo
-            'db'       => 'om-omegamas-main-17240508', // db odoo
+            'url'      => 'https://om-omegamas-staging-26402715.dev.odoo.com/jsonrpc', //url odoo
+            'db'       => 'om-omegamas-staging-26402715', // db odoo
             'uid'      => (int)$result['uid'],
             'password' => decrypt_password($result['password']),
         ];
     }
+
 
     return null;
 }
