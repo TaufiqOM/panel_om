@@ -131,52 +131,7 @@ try {
         
         $updated_pickings++;
         
-        // Get lot_ids from stock.move.line
-        $move_line_ids = $picking['move_line_ids_without_package'] ?? [];
-        if (!empty($move_line_ids)) {
-            // Delete existing lot_ids for this picking
-            $stmt_del_lot = $conn->prepare("DELETE FROM shipping_lot_ids WHERE picking_id = ?");
-            $stmt_del_lot->bind_param("i", $picking_id);
-            $stmt_del_lot->execute();
-            $stmt_del_lot->close();
-            
-            // Ambil data move_line dari Odoo
-            $move_lines = callOdooRead($username, 'stock.move.line', [['id', 'in', $move_line_ids]], ['lot_id', 'lot_name', 'product_id', 'qty_done', 'state']);
-            
-            if ($move_lines && is_array($move_lines)) {
-                foreach ($move_lines as $line) {
-                    $lot_id = null;
-                    $lot_name = null;
-                    $product_id = null;
-                    $product_name = null;
-                    $qty_done = $line['qty_done'] ?? 0;
-                    
-                    // Try to get lot info from lot_id field
-                    if (isset($line['lot_id']) && is_array($line['lot_id']) && count($line['lot_id']) >= 2) {
-                        $lot_id = $line['lot_id'][0];
-                        $lot_name = $line['lot_id'][1];
-                    }
-                    // Fallback: try lot_name field
-                    else if (isset($line['lot_name']) && !empty($line['lot_name'])) {
-                        $lot_name = $line['lot_name'];
-                    }
-                    
-                    // Extract product_id and product_name
-                    if (isset($line['product_id']) && is_array($line['product_id']) && count($line['product_id']) >= 2) {
-                        $product_id = $line['product_id'][0];
-                        $product_name = $line['product_id'][1];
-                    }
-                    
-                    // Insert lot_ids data
-                    if ($lot_name !== null && $lot_name !== '') {
-                        $stmt_lot = $conn->prepare("INSERT INTO shipping_lot_ids (picking_id, picking_name, lot_id, lot_name, product_id, product_name, qty_done) VALUES (?, ?, ?, ?, ?, ?, ?)");
-                        $stmt_lot->bind_param("isisiss", $picking_id, $picking_name, $lot_id, $lot_name, $product_id, $product_name, $qty_done);
-                        $stmt_lot->execute();
-                        $stmt_lot->close();
-                    }
-                }
-            }
-        }
+        // Note: Lot IDs tidak disimpan ke database, akan diambil realtime dari Odoo
     }
     
     // Step: Insert lot_ids ke shipping_manual_stuffing untuk picking yang state = "done"
@@ -189,77 +144,87 @@ try {
     error_log("Shipping ID: $shipping_id");
     
     if (!empty($done_pickings)) {
-        // Sanitize picking IDs untuk query
+        // Ambil lot_ids langsung dari Odoo (realtime) untuk picking yang done
         $done_pickings_safe = array_map('intval', $done_pickings);
         $done_pickings_safe = array_filter($done_pickings_safe);
         
         if (!empty($done_pickings_safe)) {
-            $picking_ids_str = implode(',', $done_pickings_safe);
+            // Get pickings dari Odoo untuk ambil move_line_ids
+            $pickings_odoo = callOdooRead($username, 'stock.picking', [['id', 'in', $done_pickings_safe]], ['id', 'move_line_ids_without_package']);
             
-            // Ambil semua lot_ids dari shipping_lot_ids untuk picking yang done
-            $sql_lots = "SELECT DISTINCT lot_name FROM shipping_lot_ids WHERE picking_id IN ($picking_ids_str) AND lot_name IS NOT NULL AND lot_name != ''";
-            error_log("Query: $sql_lots");
+            $all_lot_names = [];
             
-            $result_lots = mysqli_query($conn, $sql_lots);
-            
-            if ($result_lots) {
-                $lot_count = mysqli_num_rows($result_lots);
-                error_log("Found $lot_count lot names in shipping_lot_ids for done pickings");
-                
-                if ($lot_count > 0) {
-                    while ($lot_row = mysqli_fetch_assoc($result_lots)) {
-                        $lot_name = trim($lot_row['lot_name']);
-                        
-                        if (empty($lot_name)) {
-                            continue;
-                        }
-                        
-                        error_log("Processing lot_name: $lot_name");
-                        
-                        // Check if already exists
-                        $stmt_check = $conn->prepare("SELECT id FROM shipping_manual_stuffing WHERE id_shipping = ? AND production_code = ?");
-                        $stmt_check->bind_param("is", $shipping_id, $lot_name);
-                        $stmt_check->execute();
-                        $check_result = $stmt_check->get_result();
-                        $exists = $check_result->num_rows > 0;
-                        $stmt_check->close();
-                        
-                        if ($exists) {
-                            error_log("Lot already exists: $lot_name");
-                            continue;
-                        }
-                        
-                        // Insert to manual stuffing
-                        $stmt_manual = $conn->prepare("INSERT INTO shipping_manual_stuffing (id_shipping, production_code, status) VALUES (?, ?, 1)");
-                        $stmt_manual->bind_param("is", $shipping_id, $lot_name);
-                        
-                        if ($stmt_manual->execute()) {
-                            $inserted_manual++;
-                            error_log("✓ Successfully inserted: $lot_name (shipping_id: $shipping_id)");
-                        } else {
-                            error_log("✗ Failed to insert: $lot_name - Error: " . $stmt_manual->error);
-                            $debug_info[] = "Error inserting $lot_name: " . $stmt_manual->error;
-                        }
-                        $stmt_manual->close();
-                    }
-                    mysqli_free_result($result_lots);
-                } else {
-                    error_log("No lot names found in shipping_lot_ids for done pickings");
-                    $debug_info[] = "Tidak ada lot_ids ditemukan untuk picking yang done";
+            if ($pickings_odoo && is_array($pickings_odoo)) {
+                foreach ($pickings_odoo as $p_odoo) {
+                    $move_line_ids = $p_odoo['move_line_ids_without_package'] ?? [];
                     
-                    // Debug: Check if lot_ids exist at all for these pickings
-                    $sql_debug = "SELECT picking_id, COUNT(*) as count FROM shipping_lot_ids WHERE picking_id IN ($picking_ids_str) GROUP BY picking_id";
-                    $result_debug = mysqli_query($conn, $sql_debug);
-                    if ($result_debug) {
-                        while ($row = mysqli_fetch_assoc($result_debug)) {
-                            error_log("Picking ID {$row['picking_id']} has {$row['count']} lot_ids");
+                    if (!empty($move_line_ids)) {
+                        // Ambil data move_line langsung dari Odoo
+                        $move_lines = callOdooRead($username, 'stock.move.line', [['id', 'in', $move_line_ids]], ['lot_id', 'lot_name']);
+                        
+                        if ($move_lines && is_array($move_lines)) {
+                            foreach ($move_lines as $line) {
+                                $lot_name = null;
+                                
+                                // Try to get lot info from lot_id field
+                                if (isset($line['lot_id']) && is_array($line['lot_id']) && count($line['lot_id']) >= 2) {
+                                    $lot_name = $line['lot_id'][1];
+                                }
+                                // Fallback: try lot_name field
+                                else if (isset($line['lot_name']) && !empty($line['lot_name'])) {
+                                    $lot_name = $line['lot_name'];
+                                }
+                                
+                                if ($lot_name !== null && $lot_name !== '') {
+                                    $all_lot_names[] = trim($lot_name);
+                                }
+                            }
                         }
-                        mysqli_free_result($result_debug);
                     }
                 }
+            }
+            
+            // Remove duplicates
+            $all_lot_names = array_unique($all_lot_names);
+            error_log("Found " . count($all_lot_names) . " unique lot names from Odoo for done pickings");
+            
+            if (!empty($all_lot_names)) {
+                foreach ($all_lot_names as $lot_name) {
+                    if (empty($lot_name)) {
+                        continue;
+                    }
+                    
+                    error_log("Processing lot_name: $lot_name");
+                    
+                    // Check if already exists
+                    $stmt_check = $conn->prepare("SELECT id FROM shipping_manual_stuffing WHERE id_shipping = ? AND production_code = ?");
+                    $stmt_check->bind_param("is", $shipping_id, $lot_name);
+                    $stmt_check->execute();
+                    $check_result = $stmt_check->get_result();
+                    $exists = $check_result->num_rows > 0;
+                    $stmt_check->close();
+                    
+                    if ($exists) {
+                        error_log("Lot already exists: $lot_name");
+                        continue;
+                    }
+                    
+                    // Insert to manual stuffing
+                    $stmt_manual = $conn->prepare("INSERT INTO shipping_manual_stuffing (id_shipping, production_code, status) VALUES (?, ?, 1)");
+                    $stmt_manual->bind_param("is", $shipping_id, $lot_name);
+                    
+                    if ($stmt_manual->execute()) {
+                        $inserted_manual++;
+                        error_log("✓ Successfully inserted: $lot_name (shipping_id: $shipping_id)");
+                    } else {
+                        error_log("✗ Failed to insert: $lot_name - Error: " . $stmt_manual->error);
+                        $debug_info[] = "Error inserting $lot_name: " . $stmt_manual->error;
+                    }
+                    $stmt_manual->close();
+                }
             } else {
-                error_log("Query failed: " . mysqli_error($conn));
-                $debug_info[] = "Error executing query: " . mysqli_error($conn);
+                error_log("No lot names found from Odoo for done pickings");
+                $debug_info[] = "Tidak ada lot_ids ditemukan dari Odoo untuk picking yang done";
             }
         } else {
             error_log("No valid picking IDs after sanitization");

@@ -79,7 +79,7 @@ require_once __DIR__ . '/../../inc/config.php';
                 <!--begin::Table-->
                 <table id="shippingTable"
                     class="table table-row-dashed align-middle fs-6 gy-4 my-0 pb-3"
-                    data-kt-table-widget-3="all" style="display:none;">
+                    data-kt-table-widget-3="all">
                     <thead class="">
                         <tr>
                             <th>No</th>
@@ -621,35 +621,46 @@ function displayComparisonResult(data) {
             </div>
         `;
     } else {
-        data.forEach((picking, index) => {
-            const totalMatched = picking.matched.length;
-            const totalOdooOnly = picking.odoo_only.length;
-            const totalManualOnly = picking.manual_only.length;
-            const matchPercentage = picking.total_odoo > 0 ? 
-                Math.round((totalMatched / picking.total_odoo) * 100) : 0;
+        data.forEach((saleGroup, index) => {
+            const totalMatched = saleGroup.matched.length;
+            const totalOdooOnly = saleGroup.odoo_only.length;
+            const totalManualOnly = saleGroup.manual_only.length;
+            const matchPercentage = saleGroup.total_odoo > 0 ? 
+                Math.round((totalMatched / saleGroup.total_odoo) * 100) : 0;
             
             // Determine color based on match percentage
             let matchColor = 'danger';
             if (matchPercentage >= 80) matchColor = 'success';
             else if (matchPercentage >= 50) matchColor = 'warning';
             
+            // Format picking names
+            const pickingNamesDisplay = saleGroup.picking_names && saleGroup.picking_names.length > 0 
+                ? saleGroup.picking_names.join(', ') 
+                : 'Tidak ada picking';
+            
+            // Sale order display
+            const saleDisplay = saleGroup.sale_order_name 
+                ? `SO: ${saleGroup.sale_order_name}` 
+                : (saleGroup.sale_id ? `Sale ID: ${saleGroup.sale_id}` : 'Tidak ada Sale Order');
+            
             html += `
-                <div class="comparison-card mb-3" data-picking-id="${picking.picking_id}">
+                <div class="comparison-card mb-3" data-sale-id="${saleGroup.sale_id || 0}">
                     <div class="comparison-header py-2 px-3">
                         <div class="d-flex justify-content-between align-items-center">
                             <div>
-                                <small class="text-white fw-bold">${picking.picking_name}</small>
-                                ${picking.po ? '<br><small class="text-white-50" style="font-size: 0.7rem;">PO: ' + picking.po + '</small>' : ''}
+                                <small class="text-white fw-bold">${saleDisplay}</small>
+                                ${saleGroup.po ? '<br><small class="text-white-50" style="font-size: 0.7rem;">PO: ' + saleGroup.po + '</small>' : ''}
+                                <br><small class="text-white-50" style="font-size: 0.65rem;">Picking: ${pickingNamesDisplay}</small>
                             </div>
                             <div class="text-end">
                                 <span class="badge badge-${matchColor} badge-sm">${matchPercentage}% Cocok</span>
-                                <br><small class="text-white-50" style="font-size: 0.7rem;">${totalMatched}/${picking.total_odoo} item</small>
+                                <br><small class="text-white-50" style="font-size: 0.7rem;">${totalMatched}/${saleGroup.total_odoo} item</small>
                             </div>
                         </div>
                     </div>
                     <div class="comparison-body p-2">
-                        <!-- Statistics -->
-                        <div class="stats-row mb-2">
+                        <!-- Statistics Summary -->
+                        <div class="stats-row mb-3">
                             <div class="stat-card matched">
                                 <div class="stat-number">${totalMatched}</div>
                                 <div class="stat-label">Sudah Sama</div>
@@ -658,44 +669,91 @@ function displayComparisonResult(data) {
                             <div class="stat-card odoo-only">
                                 <div class="stat-number">${totalOdooOnly}</div>
                                 <div class="stat-label">Hanya di Odoo</div>
-                                <small style="opacity: 0.8;">Belum input manual</small>
+                                <small style="opacity: 0.8;">Kebanyakan (${totalOdooOnly} item)</small>
                             </div>
                             <div class="stat-card manual-only">
                                 <div class="stat-number">${totalManualOnly}</div>
                                 <div class="stat-label">Hanya Manual</div>
-                                <small style="opacity: 0.8;">Belum ada di Odoo</small>
+                                <small style="opacity: 0.8;">Kurang (${totalManualOnly} item)</small>
                             </div>
                         </div>
                         
-                        <!-- Comparison Columns -->
-                        <div class="comparison-columns">
-                            <!-- Odoo Column -->
-                            <div class="comparison-column">
-                                <div class="column-header odoo py-2 px-2">
-                                    <div class="d-flex justify-content-between align-items-center">
-                                        <small class="fw-bold">💻 Data Odoo (Sistem)</small>
-                                        <span class="badge badge-light badge-sm">${picking.total_odoo}</span>
-                                    </div>
+                        <!-- Warning: Orphan Codes (tidak ada di picking manapun) -->
+                        ${saleGroup.orphan_codes && saleGroup.orphan_codes.length > 0 ? `
+                        <div class="mb-3">
+                            <div class="alert alert-warning py-2 px-3 mb-2" style="border-left: 4px solid #ffc107;">
+                                <div class="d-flex align-items-center mb-1">
+                                    <i class="ki-duotone ki-information-5 fs-3 me-2" style="color: #856404;">
+                                        <span class="path1"></span>
+                                        <span class="path2"></span>
+                                        <span class="path3"></span>
+                                    </i>
+                                    <strong style="font-size: 0.85rem; color: #856404;">
+                                        ${saleGroup.total_orphan} Production Code Tidak Ditemukan di Picking
+                                    </strong>
                                 </div>
-                                <div class="column-content" style="max-height: 300px;">
-                                    ${renderLotItems(picking.matched, 'matched', 'odoo')}
-                                    ${renderLotItems(picking.odoo_only, 'unmatched', 'odoo')}
-                                    ${picking.total_odoo === 0 ? '<div class="text-center text-muted py-3"><small>Tidak ada data</small></div>' : ''}
-                                </div>
+                                <small style="color: #856404;">
+                                    Code-code berikut ada di manual stuffing tapi tidak ditemukan di picking manapun di sale order ini.
+                                </small>
                             </div>
-                            
-                            <!-- Manual Column -->
-                            <div class="comparison-column">
-                                <div class="column-header manual py-2 px-2">
-                                    <div class="d-flex justify-content-between align-items-center">
-                                        <small class="fw-bold">✍️ Input Manual (Fisik)</small>
-                                        <span class="badge badge-light badge-sm">${picking.total_manual}</span>
+                            ${renderOrphanCodes(saleGroup.orphan_codes)}
+                        </div>
+                        ` : ''}
+                        
+                        <!-- Detail Per Product -->
+                        ${saleGroup.products && saleGroup.products.length > 0 ? `
+                        <div class="mb-3">
+                            <h6 class="mb-2" style="font-size: 0.85rem; font-weight: 600; color: #495057;">
+                                <i class="ki-duotone ki-box fs-4 text-primary me-1">
+                                    <span class="path1"></span>
+                                    <span class="path2"></span>
+                                </i>
+                                Detail Per Product
+                            </h6>
+                            ${saleGroup.products.map(product => renderProductDetail(product, saleGroup.picking_details || [])).join('')}
+                        </div>
+                        ` : ''}
+                        
+                        <!-- Comparison Columns (Collapsible) -->
+                        <div class="mb-2">
+                            <button class="btn btn-sm btn-light w-100 text-start" type="button" data-bs-toggle="collapse" data-bs-target="#detailColumns-${index}" aria-expanded="false">
+                                <i class="ki-duotone ki-down fs-5 me-1">
+                                    <span class="path1"></span>
+                                    <span class="path2"></span>
+                                </i>
+                                Lihat Detail Barcode Lengkap
+                            </button>
+                        </div>
+                        <div class="collapse" id="detailColumns-${index}">
+                            <div class="comparison-columns">
+                                <!-- Odoo Column -->
+                                <div class="comparison-column">
+                                    <div class="column-header odoo py-2 px-2">
+                                        <div class="d-flex justify-content-between align-items-center">
+                                            <small class="fw-bold">💻 Data Odoo (Sistem)</small>
+                                            <span class="badge badge-light badge-sm">${saleGroup.total_odoo}</span>
+                                        </div>
+                                    </div>
+                                    <div class="column-content" style="max-height: 300px;">
+                                        ${renderLotItems(saleGroup.matched, 'matched', 'odoo')}
+                                        ${renderLotItems(saleGroup.odoo_only, 'unmatched', 'odoo')}
+                                        ${saleGroup.total_odoo === 0 ? '<div class="text-center text-muted py-3"><small>Tidak ada data</small></div>' : ''}
                                     </div>
                                 </div>
-                                <div class="column-content" style="max-height: 300px;">
-                                    ${renderLotItems(picking.matched, 'matched', 'manual')}
-                                    ${renderLotItems(picking.manual_only, 'unmatched', 'manual')}
-                                    ${picking.total_manual === 0 ? '<div class="text-center text-muted py-3"><small>Tidak ada data</small></div>' : ''}
+                                
+                                <!-- Manual Column -->
+                                <div class="comparison-column">
+                                    <div class="column-header manual py-2 px-2">
+                                        <div class="d-flex justify-content-between align-items-center">
+                                            <small class="fw-bold">✍️ Input Manual (Fisik)</small>
+                                            <span class="badge badge-light badge-sm">${saleGroup.total_manual}</span>
+                                        </div>
+                                    </div>
+                                    <div class="column-content" style="max-height: 300px;">
+                                        ${renderLotItems(saleGroup.matched, 'matched', 'manual')}
+                                        ${renderLotItems(saleGroup.manual_only, 'unmatched', 'manual')}
+                                        ${saleGroup.total_manual === 0 ? '<div class="text-center text-muted py-3"><small>Tidak ada data</small></div>' : ''}
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -704,8 +762,9 @@ function displayComparisonResult(data) {
                         ${totalMatched > 0 ? `
                         <div class="mt-2 pt-2" style="border-top: 1px solid #dee2e6;">
                             <button class="btn btn-sm btn-success w-100 btn-process-barcode" 
-                                    data-picking-id="${picking.picking_id}"
-                                    data-picking-name="${picking.picking_name}"
+                                    data-sale-id="${saleGroup.sale_id || 0}"
+                                    data-sale-order-name="${saleGroup.sale_order_name || ''}"
+                                    data-picking-names="${saleGroup.picking_names ? saleGroup.picking_names.join(',') : ''}"
                                     data-matched-count="${totalMatched}">
                                 <i class="ki-duotone ki-barcode fs-4 me-1">
                                     <span class="path1"></span>
@@ -714,7 +773,7 @@ function displayComparisonResult(data) {
                                 Proses Barcode (${totalMatched} item)
                             </button>
                             <small class="text-muted d-block mt-1 text-center" style="font-size: 0.7rem;">
-                                Update tanggal, reset lot & insert yang cocok
+                                Update tanggal, reset lot & insert yang cocok untuk Sale Order ini
                             </small>
                         </div>
                         ` : ''}
@@ -737,15 +796,17 @@ function initProcessBarcodeButtons() {
     const buttons = document.querySelectorAll('.btn-process-barcode');
     buttons.forEach(btn => {
         btn.addEventListener('click', function() {
-            const pickingId = this.getAttribute('data-picking-id');
-            const pickingName = this.getAttribute('data-picking-name');
+            const saleId = this.getAttribute('data-sale-id');
+            const saleOrderName = this.getAttribute('data-sale-order-name');
+            const pickingNames = this.getAttribute('data-picking-names');
             const matchedCount = this.getAttribute('data-matched-count');
             
             // Get shipping scheduled date for display
             const shippingInfo = document.querySelector('.info-value');
             
             // Confirm before processing
-            if (!confirm(`Proses Barcode untuk ${pickingName}?\n\nProses ini akan:\n1. Update tanggal kirim di picking\n2. Reset semua lot/serial yang ada\n3. Insert ${matchedCount} lot/serial yang cocok\n\nLanjutkan?`)) {
+            const displayName = saleOrderName || `Sale ID: ${saleId}`;
+            if (!confirm(`Proses Barcode untuk ${displayName}?\n\nPicking: ${pickingNames}\n\nProses ini akan:\n1. Update tanggal kirim di picking\n2. Reset semua lot/serial yang ada\n3. Insert ${matchedCount} lot/serial yang cocok\n\nLanjutkan?`)) {
                 return;
             }
             
@@ -756,13 +817,13 @@ function initProcessBarcodeButtons() {
             // Get shipping ID from compare button
             const shippingId = document.getElementById('btnCompareLotSync').getAttribute('data-shipping-id');
             
-            // Call process API
+            // Call process API with sale_id
             fetch('shipping/process_barcode.php', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/x-www-form-urlencoded',
                 },
-                body: `shipping_id=${shippingId}&picking_id=${pickingId}`
+                body: `shipping_id=${shippingId}&sale_id=${saleId}`
             })
             .then(response => response.json())
             .then(data => {
@@ -793,6 +854,248 @@ function initProcessBarcodeButtons() {
             });
         });
     });
+}
+
+// Render orphan codes (code yang tidak ada di picking manapun)
+function renderOrphanCodes(orphanCodes) {
+    if (!orphanCodes || orphanCodes.length === 0) {
+        return '';
+    }
+    
+    return `
+        <div class="card" style="border: 1px solid #ffc107; border-radius: 6px;">
+            <div class="card-body p-2">
+                <div class="table-responsive">
+                    <table class="table table-sm table-bordered mb-0" style="font-size: 0.75rem;">
+                        <thead class="table-warning">
+                            <tr>
+                                <th style="padding: 6px; width: 22%;">Production Code</th>
+                                <th style="padding: 6px; width: 10%;">Product ID</th>
+                                <th style="padding: 6px; width: 12%;">Sale Order ID</th>
+                                <th style="padding: 6px; width: 56%;">Seharusnya di Picking</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${orphanCodes.map((orphan, idx) => `
+                                <tr ${orphan.wrong_sale_order ? 'style="background: #fff3cd;"' : ''}>
+                                    <td style="padding: 6px;">
+                                        <span class="badge badge-warning badge-sm">${orphan.code}</span>
+                                        ${orphan.wrong_sale_order ? `
+                                            <br><small class="text-danger" style="font-size: 0.65rem;">
+                                                <i class="ki-duotone ki-information-5">
+                                                    <span class="path1"></span>
+                                                    <span class="path2"></span>
+                                                </i>
+                                                Sale Order berbeda!
+                                            </small>
+                                        ` : ''}
+                                    </td>
+                                    <td style="padding: 6px;">
+                                        ${orphan.product_id ? `<span class="badge badge-info badge-sm">${orphan.product_id}</span>` : '<small class="text-muted">-</small>'}
+                                    </td>
+                                    <td style="padding: 6px;">
+                                        ${orphan.sale_order_id ? `
+                                            <span class="badge ${orphan.wrong_sale_order ? 'badge-danger' : 'badge-secondary'} badge-sm">
+                                                ${orphan.sale_order_id}
+                                            </span>
+                                            ${orphan.wrong_sale_order ? `
+                                                <br><small class="text-muted" style="font-size: 0.65rem;">
+                                                    Current: ${orphan.current_sale_id}
+                                                </small>
+                                            ` : ''}
+                                        ` : '<small class="text-muted">-</small>'}
+                                    </td>
+                                    <td style="padding: 6px;">
+                                        ${(orphan.suggested_pickings && orphan.suggested_pickings.length > 0) || (orphan.suggested_pickings_other_shipping && orphan.suggested_pickings_other_shipping.length > 0) ? `
+                                            ${orphan.suggested_pickings && orphan.suggested_pickings.length > 0 ? `
+                                                <div class="mb-1">
+                                                    <small class="text-muted d-block mb-1" style="font-size: 0.65rem; font-weight: 600;">Di Shipping Ini:</small>
+                                                    <div class="d-flex flex-wrap gap-1">
+                                                        ${orphan.suggested_pickings.map(sp => `
+                                                            <span class="badge badge-primary badge-sm" title="${sp.reason || ''}">
+                                                                ${sp.picking_name}
+                                                            </span>
+                                                        `).join('')}
+                                                    </div>
+                                                </div>
+                                            ` : ''}
+                                            ${orphan.suggested_pickings_other_shipping && orphan.suggested_pickings_other_shipping.length > 0 ? `
+                                                <div class="mt-2 pt-2" style="border-top: 1px dashed #ffc107;">
+                                                    <small class="text-warning d-block mb-1" style="font-size: 0.65rem; font-weight: 600;">
+                                                        <i class="ki-duotone ki-arrow-right fs-5">
+                                                            <span class="path1"></span>
+                                                            <span class="path2"></span>
+                                                        </i>
+                                                        Di Shipping Lain (${orphan.suggested_pickings_other_shipping.length} picking):
+                                                    </small>
+                                                    <div class="d-flex flex-wrap gap-1">
+                                                        ${orphan.suggested_pickings_other_shipping.map(sp => `
+                                                            <div class="badge badge-warning badge-sm p-1" style="display: inline-block;" title="${sp.reason || ''} | Shipping: ${sp.shipping_name || 'Tidak diketahui'}">
+                                                                <div>${sp.picking_name}</div>
+                                                                ${sp.shipping_name ? `<small style="font-size: 0.6rem; display: block; margin-top: 2px;">📦 ${sp.shipping_name}</small>` : ''}
+                                                            </div>
+                                                        `).join('')}
+                                                    </div>
+                                                </div>
+                                            ` : ''}
+                                            ${orphan.suggested_pickings && orphan.suggested_pickings.length > 0 && orphan.suggested_pickings[0].reason ? `
+                                                <small class="text-muted d-block mt-1" style="font-size: 0.65rem;">
+                                                    <em>${orphan.suggested_pickings[0].reason}</em>
+                                                </small>
+                                            ` : ''}
+                                        ` : `
+                                            <small class="text-muted">Tidak dapat diidentifikasi</small>
+                                        `}
+                                    </td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                </div>
+                <div class="mt-2 p-2" style="background: #fff3cd; border-radius: 4px;">
+                    <small class="text-muted" style="font-size: 0.7rem;">
+                        <strong>Catatan:</strong> Code-code ini ada di manual stuffing tapi tidak ditemukan di picking manapun di sale order ini. 
+                        ${orphanCodes.some(oc => oc.product_id) ? 
+                            'Beberapa code memiliki product_id yang dapat membantu identifikasi picking yang tepat. ' : 
+                            ''}
+                        ${orphanCodes.some(oc => oc.wrong_sale_order) ? 
+                            '<strong class="text-danger">Beberapa code memiliki Sale Order ID yang berbeda dengan sale order saat ini - kemungkinan code ini seharusnya ada di sale order lain.</strong>' : 
+                            ''}
+                        Silakan cek kembali apakah code ini seharusnya ada di picking lain atau di sale order lain.
+                    </small>
+                </div>
+            </div>
+        </div>
+    `;
+}
+
+// Render product detail dengan breakdown per picking
+function renderProductDetail(product, pickingDetails) {
+    const productName = product.product_name || `Product ID: ${product.product_id}`;
+    const totalMatched = product.total_matched || 0;
+    const totalOdooOnly = product.total_odoo_only || 0;
+    const totalManualOnly = product.total_manual_only || 0;
+    
+    // Hitung per picking
+    const pickingBreakdown = [];
+    const matchedLotNames = product.matched.map(m => m.code);
+    
+    pickingDetails.forEach(picking => {
+        const pickingLots = picking.lots || [];
+        const productLots = pickingLots.filter(lot => lot.product_id == product.product_id);
+        
+        let matchedCount = 0;
+        let odooOnlyCount = 0;
+        
+        productLots.forEach(lot => {
+            if (matchedLotNames.includes(lot.lot_name)) {
+                matchedCount++;
+            } else {
+                odooOnlyCount++;
+            }
+        });
+        
+        if (productLots.length > 0) {
+            pickingBreakdown.push({
+                picking_name: picking.picking_name,
+                matched: matchedCount,
+                odoo_only: odooOnlyCount,
+                total: productLots.length
+            });
+        }
+    });
+    
+    // Manual only tidak bisa di-breakdown per picking karena manual stuffing tidak punya relasi ke picking
+    // Manual only dihitung untuk seluruh sale order
+    
+    return `
+        <div class="card mb-2" style="border: 1px solid #dee2e6; border-radius: 6px;">
+            <div class="card-body p-2">
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <h6 class="mb-0" style="font-size: 0.8rem; font-weight: 600; color: #495057;">
+                        ${productName}
+                    </h6>
+                    <span class="badge badge-light-primary badge-sm">ID: ${product.product_id || '-'}</span>
+                </div>
+                
+                <!-- Summary per product -->
+                <div class="row g-2 mb-2">
+                    <div class="col-4">
+                        <div class="text-center p-1" style="background: #d4edda; border-radius: 4px; border: 1px solid #c3e6cb;">
+                            <div style="font-size: 1.1rem; font-weight: bold; color: #155724;">${totalMatched}</div>
+                            <small style="font-size: 0.65rem; color: #155724;">Cocok</small>
+                        </div>
+                    </div>
+                    <div class="col-4">
+                        <div class="text-center p-1" style="background: #fff3cd; border-radius: 4px; border: 1px solid #ffeaa7;">
+                            <div style="font-size: 1.1rem; font-weight: bold; color: #856404;">${totalOdooOnly}</div>
+                            <small style="font-size: 0.65rem; color: #856404;">Kebanyakan</small>
+                        </div>
+                    </div>
+                    <div class="col-4">
+                        <div class="text-center p-1" style="background: #d1ecf1; border-radius: 4px; border: 1px solid #bee5eb;">
+                            <div style="font-size: 1.1rem; font-weight: bold; color: #0c5460;">${totalManualOnly}</div>
+                            <small style="font-size: 0.65rem; color: #0c5460;">Kurang</small>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Detail per picking -->
+                ${pickingBreakdown.length > 0 ? `
+                <div class="mt-2">
+                    <small class="text-muted d-block mb-1" style="font-size: 0.7rem; font-weight: 600;">Detail Per Picking:</small>
+                    <div class="table-responsive">
+                        <table class="table table-sm table-bordered mb-0" style="font-size: 0.7rem;">
+                            <thead class="table-light">
+                                <tr>
+                                    <th style="padding: 4px;">Picking</th>
+                                    <th class="text-center" style="padding: 4px; background: #d4edda;">Cocok</th>
+                                    <th class="text-center" style="padding: 4px; background: #fff3cd;">Kebanyakan</th>
+                                    <th class="text-center" style="padding: 4px; background: #d1ecf1;">Kurang</th>
+                                    <th class="text-center" style="padding: 4px;">Total Odoo</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${pickingBreakdown.map(pb => `
+                                    <tr>
+                                        <td style="padding: 4px;">
+                                            <small class="fw-bold">${pb.picking_name}</small>
+                                        </td>
+                                        <td class="text-center" style="padding: 4px; background: #d4edda;">
+                                            <span class="badge badge-success badge-sm">${pb.matched}</span>
+                                        </td>
+                                        <td class="text-center" style="padding: 4px; background: #fff3cd;">
+                                            <span class="badge badge-warning badge-sm">${pb.odoo_only}</span>
+                                        </td>
+                                        <td class="text-center" style="padding: 4px; background: #d1ecf1;">
+                                            <small class="text-muted">-</small>
+                                        </td>
+                                        <td class="text-center" style="padding: 4px;">
+                                            <small class="fw-bold">${pb.total}</small>
+                                        </td>
+                                    </tr>
+                                `).join('')}
+                                ${totalManualOnly > 0 ? `
+                                    <tr style="background: #f8f9fa;">
+                                        <td colspan="3" style="padding: 4px;">
+                                            <small class="text-muted"><em>Manual Only (tidak bisa di-breakdown per picking)</em></small>
+                                        </td>
+                                        <td class="text-center" style="padding: 4px; background: #d1ecf1;">
+                                            <span class="badge badge-info badge-sm">${totalManualOnly}</span>
+                                        </td>
+                                        <td class="text-center" style="padding: 4px;">
+                                            <small>-</small>
+                                        </td>
+                                    </tr>
+                                ` : ''}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                ` : ''}
+            </div>
+        </div>
+    `;
 }
 
 function renderLotItems(items, type, source) {
