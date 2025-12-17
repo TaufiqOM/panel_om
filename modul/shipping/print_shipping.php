@@ -1,7 +1,4 @@
 <?php
-// Enable error reporting untuk debugging
-ini_set('display_errors', 1);
-error_reporting(E_ALL);
 
 session_start();
 
@@ -322,9 +319,9 @@ error_log("=== M3 ASSIGN: Selesai assign M3 ===");
         body {
             font-family: 'Arial', 'Helvetica', sans-serif;
             font-size: 9pt;
-            line-height: 1.4;
+            line-height: 1.3;
             color: #000;
-            padding: 15mm;
+            padding: 10mm 15mm;
             background: #fff;
             width: 210mm;
             min-height: 297mm;
@@ -408,7 +405,31 @@ error_log("=== M3 ASSIGN: Selesai assign M3 ===");
         table {
             width: 100%;
             border-collapse: collapse;
-            margin-top: 10px;
+            margin-top: 5px;
+        }
+        
+        /* Kurangi jarak antara detail-row dan product-row berikutnya */
+        .detail-row {
+            margin-bottom: 0;
+        }
+        
+        .product-row {
+            margin-top: 0;
+        }
+        
+        /* Kurangi spacing pada table rows */
+        table.main-table tbody tr {
+            margin: 0;
+        }
+        
+        table.main-table tbody tr.detail-row {
+            margin-top: 0;
+            margin-bottom: 0;
+        }
+        
+        table.main-table tbody tr.product-row {
+            margin-top: 0;
+            margin-bottom: 0;
         }
         
         table.main-table {
@@ -421,11 +442,12 @@ error_log("=== M3 ASSIGN: Selesai assign M3 ===");
         
         .product-row td {
             font-weight: bold;
-            padding: 4px 3px;
+            padding: 2px 3px;
         }
         
         .detail-row {
             background-color: #fafafa;
+            margin: 0;
         }
         
         .detail-table {
@@ -437,7 +459,7 @@ error_log("=== M3 ASSIGN: Selesai assign M3 ===");
         .detail-table td {
             border: none;
             border-bottom: 1px solid #ddd;
-            padding: 2px 3px;
+            padding: 1px 3px;
             font-size: 7pt;
         }
         
@@ -450,7 +472,7 @@ error_log("=== M3 ASSIGN: Selesai assign M3 ===");
             color: #000;
             border: none;
             border-bottom: 1px solid #ccc;
-            padding: 3px;
+            padding: 2px 3px;
             font-size: 7pt;
             text-align: left;
         }
@@ -458,7 +480,7 @@ error_log("=== M3 ASSIGN: Selesai assign M3 ===");
         .warna-label {
             font-weight: bold;
             margin: 0;
-            padding: 2px 3px;
+            padding: 1px 3px;
             background-color: #f5f5f5;
             font-size: 8pt;
             color: #000;
@@ -556,7 +578,9 @@ error_log("=== M3 ASSIGN: Selesai assign M3 ===");
             
             @page {
                 size: A4 portrait;
-                margin: 15mm;
+                margin: 10mm 15mm;
+                width: 210mm;
+                height: 297mm;
             }
             
             body {
@@ -564,6 +588,7 @@ error_log("=== M3 ASSIGN: Selesai assign M3 ===");
                 min-height: auto !important;
                 padding: 0 !important;
                 margin: 0 !important;
+                line-height: 1.3 !important;
                 -webkit-print-color-adjust: exact;
                 print-color-adjust: exact;
             }
@@ -580,7 +605,8 @@ error_log("=== M3 ASSIGN: Selesai assign M3 ===");
             
             .print-header {
                 page-break-after: avoid;
-                margin-bottom: 8px;
+                page-break-inside: avoid;
+                margin-bottom: 5px;
             }
             
             .print-header h2 {
@@ -593,16 +619,53 @@ error_log("=== M3 ASSIGN: Selesai assign M3 ===");
             
             .info-section {
                 page-break-after: avoid;
-                margin-bottom: 5px;
+                page-break-inside: avoid;
+                margin-bottom: 3px;
             }
             
             .table-container {
                 page-break-inside: auto;
-                margin-top: 5px;
+                margin-top: 3px;
             }
             
             table.main-table {
                 page-break-inside: auto;
+                border-collapse: collapse;
+            }
+            
+            table.main-table thead {
+                display: table-header-group;
+            }
+            
+            table.main-table tbody {
+                display: table-row-group;
+            }
+            
+            /* Pastikan setiap row tidak terpotong */
+            table.main-table tbody tr {
+                page-break-inside: avoid !important;
+                page-break-after: auto;
+            }
+            
+            /* Pastikan product-row dan detail-row selalu bersama - tidak terpisah */
+            .product-row {
+                page-break-after: avoid !important;
+            }
+            
+            .product-row + .detail-row {
+                page-break-before: avoid !important;
+            }
+            
+            /* Jika detail-row terlalu panjang, boleh pindah halaman tapi tetap bersama product-row */
+            .detail-row {
+                orphans: 2;
+                widows: 2;
+            }
+            
+            /* Kurangi space kosong saat pagebreak */
+            table.main-table tbody tr {
+                margin: 0;
+                padding: 0;
             }
             
             thead {
@@ -619,11 +682,6 @@ error_log("=== M3 ASSIGN: Selesai assign M3 ===");
                 print-color-adjust: exact;
             }
             
-            .product-row {
-                page-break-after: avoid;
-                page-break-inside: avoid;
-            }
-            
             .product-row td {
                 font-weight: bold !important;
                 -webkit-print-color-adjust: exact;
@@ -631,11 +689,17 @@ error_log("=== M3 ASSIGN: Selesai assign M3 ===");
             }
             
             .detail-row {
-                page-break-before: avoid;
-                page-break-inside: auto;
                 background-color: #fafafa !important;
                 -webkit-print-color-adjust: exact;
                 print-color-adjust: exact;
+            }
+            
+            .detail-table {
+                page-break-inside: auto;
+            }
+            
+            .detail-table tr {
+                page-break-inside: avoid;
             }
             
             .detail-table th {
@@ -645,11 +709,13 @@ error_log("=== M3 ASSIGN: Selesai assign M3 ===");
                 print-color-adjust: exact;
             }
             
+            /* Pastikan footer tidak terpotong */
             .footer-row {
                 background-color: #f0f0f0 !important;
                 -webkit-print-color-adjust: exact;
                 print-color-adjust: exact;
-                page-break-inside: avoid;
+                page-break-inside: avoid !important;
+                page-break-before: auto;
             }
             
             .warna-label {
@@ -657,6 +723,22 @@ error_log("=== M3 ASSIGN: Selesai assign M3 ===");
                 -webkit-print-color-adjust: exact;
                 print-color-adjust: exact;
             }
+            
+            /* Pastikan cell tidak terpotong */
+            table.main-table td {
+                page-break-inside: avoid !important;
+                vertical-align: top;
+            }
+            
+            table.main-table th {
+                page-break-inside: avoid !important;
+            }
+            
+            /* Pastikan border tidak terpotong */
+            table.main-table {
+                border-spacing: 0;
+            }
+            
             
             tfoot {
                 display: table-footer-group;
@@ -717,39 +799,85 @@ error_log("=== M3 ASSIGN: Selesai assign M3 ===");
                         $batch_name = $shipping['name'];
                         $batches = callOdooRead($username, 'stock.picking.batch', [['name', '=', $batch_name]], ['company_id']);
                         
+                        error_log("=== LOGO FETCH: Batch name: $batch_name ===");
+                        error_log("=== LOGO FETCH: Batches result: " . json_encode($batches) . " ===");
+                        
                         $company_id = null;
                         if ($batches && is_array($batches) && !empty($batches) && isset($batches[0]['company_id'])) {
                             $company_id_field = $batches[0]['company_id'];
+                            error_log("=== LOGO FETCH: company_id field: " . json_encode($company_id_field) . " ===");
+                            
                             if (is_array($company_id_field) && count($company_id_field) >= 1) {
                                 $company_id = $company_id_field[0];
-                            } else if (!is_array($company_id_field)) {
+                            } else if (!is_array($company_id_field) && $company_id_field) {
                                 $company_id = $company_id_field;
                             }
+                            error_log("=== LOGO FETCH: Extracted company_id: " . ($company_id ?? 'NULL') . " ===");
                         }
                         
                         // Jika tidak ada company_id dari batch, ambil company aktif
                         if ($company_id) {
+                            error_log("=== LOGO FETCH: Querying company by ID: $company_id ===");
                             $companies = callOdooRead($username, 'res.company', [['id', '=', $company_id]], ['id', 'name', 'logo']);
                         } else {
+                            error_log("=== LOGO FETCH: No company_id from batch, querying active company ===");
                             // Ambil company aktif (biasanya company_id = 1 atau yang memiliki parent_id = false)
                             $companies = callOdooRead($username, 'res.company', [['parent_id', '=', false]], ['id', 'name', 'logo']);
-                        }
-                        
-                        if ($companies && is_array($companies) && !empty($companies)) {
-                            // Ambil company pertama
-                            $company = $companies[0];
-                            if (isset($company['logo']) && !empty($company['logo'])) {
-                                // Logo dari Odoo adalah base64 string, langsung gunakan
-                                $company_logo = $company['logo'];
+                            
+                            // Jika masih tidak ada, ambil semua company
+                            if (!$companies || empty($companies)) {
+                                error_log("=== LOGO FETCH: No company with parent_id=false, trying all companies ===");
+                                $companies = callOdooRead($username, 'res.company', [], ['id', 'name', 'logo']);
                             }
                         }
+                        
+                        error_log("=== LOGO FETCH: Companies result count: " . (is_array($companies) ? count($companies) : 0) . " ===");
+                        
+                        if ($companies && is_array($companies) && !empty($companies)) {
+                            // Loop semua company untuk mencari yang punya logo
+                            foreach ($companies as $company) {
+                                error_log("=== LOGO FETCH: Checking company - ID: " . ($company['id'] ?? 'N/A') . ", Name: " . ($company['name'] ?? 'N/A') . " ===");
+                                
+                                if (isset($company['logo']) && !empty($company['logo']) && $company['logo'] !== false) {
+                                    // Logo dari Odoo adalah base64 string, langsung gunakan
+                                    $company_logo = $company['logo'];
+                                    error_log("=== LOGO FETCH: Logo found for company ID " . ($company['id'] ?? 'N/A') . ", length: " . strlen($company_logo) . " ===");
+                                    break; // Gunakan company pertama yang punya logo
+                                } else {
+                                    error_log("=== LOGO FETCH: Company ID " . ($company['id'] ?? 'N/A') . " - Logo field: " . json_encode($company['logo'] ?? 'not set') . " ===");
+                                }
+                            }
+                            
+                            if (empty($company_logo)) {
+                                error_log("=== LOGO FETCH: No company with logo found ===");
+                            }
+                        } else {
+                            error_log("=== LOGO FETCH: No companies returned from Odoo ===");
+                        }
+                    } else {
+                        error_log("=== LOGO FETCH: Username is empty ===");
                     }
                     ?>
                     <div style="text-align: right;">
-                        <?php if (!empty($company_logo)): ?>
-                            <img src="data:image/png;base64,<?= $company_logo ?>" alt="Company Logo" style="max-width: 150px; max-height: 120px; object-fit: contain; margin-bottom: 1px; margin-top: -25px; display: block; margin-left: auto;">
+                        <?php 
+                        // Debug: cek apakah logo ada
+                        $logo_exists = !empty($company_logo) && $company_logo !== false && $company_logo !== 'False';
+                        error_log("=== LOGO DISPLAY: company_logo exists: " . ($logo_exists ? 'YES' : 'NO') . ", length: " . strlen($company_logo ?? '') . " ===");
+                        
+                        if ($logo_exists): 
+                            // Pastikan logo adalah base64 yang valid
+                            $logo_data = $company_logo;
+                            // Hapus prefix data:image jika ada
+                            if (strpos($logo_data, 'data:image') === 0) {
+                                $logo_data = substr($logo_data, strpos($logo_data, ',') + 1);
+                            }
+                        ?>
+                            <img src="data:image/png;base64,<?= htmlspecialchars($logo_data) ?>" alt="Company Logo" style="max-width: 150px; max-height: 120px; object-fit: contain; margin-bottom: 1px; margin-top: -25px; display: block; margin-left: auto;" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
+                            <div style="width: 150px; height: 120px; display: none; align-items: center; justify-content: center; background: transparent; margin-left: auto; margin-bottom: 1px;">
+                                <small style="color: #999;">LOGO</small>
+                            </div>
                         <?php else: ?>
-                            <div style="width: 250px; height: 120px; display: flex; align-items: center; justify-content: center; background: transparent; margin-left: auto; margin-bottom: 1px;">
+                            <div style="width: 150px; height: 120px; display: flex; align-items: center; justify-content: center; background: transparent; margin-left: auto; margin-bottom: 1px;">
                                 <small style="color: #999;">LOGO</small>
                             </div>
                         <?php endif; ?>
@@ -838,9 +966,9 @@ error_log("=== M3 ASSIGN: Selesai assign M3 ===");
                         </tr>
                         <!-- Detail Row -->
                         <tr class="detail-row">
-                            <td colspan="7" style="padding: 0; border-left: none; border-right: none;">
-                                <div class="warna-label">Warna : <?= htmlspecialchars($finishing ?: '-') ?></div>
-                                <table class="detail-table">
+                            <td colspan="7" style="padding: 0; border-left: none; border-right: none; margin: 0;">
+                                <div class="warna-label" style="margin: 0; padding: 1px 3px;">Warna : <?= htmlspecialchars($finishing ?: '-') ?></div>
+                                <table class="detail-table" style="margin: 0;">
                                     <thead>
                                         <tr>
                                             <th style="width: 8%;">No</th>
@@ -862,6 +990,7 @@ error_log("=== M3 ASSIGN: Selesai assign M3 ===");
                                 </table>
                             </td>
                         </tr>
+                        <!-- Spacer row untuk mengurangi jarak (opsional, bisa dihapus jika terlalu rapat) -->
                     <?php endforeach; ?>
                     
                     <!-- Footer Row -->
@@ -898,10 +1027,6 @@ error_log("=== M3 ASSIGN: Selesai assign M3 ===");
                 </tbody>
             </table>
         <?php endif; ?>
-    </div>
-    
-    <div class="print-footer">
-        <div>Printed on: <?= date('d M Y H:i:s') ?></div>
     </div>
     
     </div> <!-- End a4-container -->
