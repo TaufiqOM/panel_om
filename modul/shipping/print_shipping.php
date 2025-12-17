@@ -326,6 +326,9 @@ error_log("=== M3 ASSIGN: Selesai assign M3 ===");
             color: #000;
             padding: 15mm;
             background: #fff;
+            width: 210mm;
+            min-height: 297mm;
+            margin: 0 auto;
         }
         
         .print-header {
@@ -551,21 +554,41 @@ error_log("=== M3 ASSIGN: Selesai assign M3 ===");
                 print-color-adjust: exact !important;
             }
             
-            body {
-                padding: 5mm;
-                margin: 0;
-                -webkit-print-color-adjust: exact;
-                print-color-adjust: exact;
-            }
-            
             @page {
                 size: A4 portrait;
                 margin: 15mm;
             }
             
+            body {
+                width: 100% !important;
+                min-height: auto !important;
+                padding: 0 !important;
+                margin: 0 !important;
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+            }
+            
+            .a4-container {
+                box-shadow: none !important;
+                border: none !important;
+                margin: 0 !important;
+                padding: 0 !important;
+                width: 100% !important;
+                min-height: auto !important;
+                background: transparent !important;
+            }
+            
             .print-header {
                 page-break-after: avoid;
                 margin-bottom: 8px;
+            }
+            
+            .print-header h2 {
+                font-size: 20pt !important;
+            }
+            
+            .print-header h3 {
+                font-size: 14pt !important;
             }
             
             .info-section {
@@ -639,21 +662,49 @@ error_log("=== M3 ASSIGN: Selesai assign M3 ===");
                 display: table-footer-group;
             }
         }
+        /* Preview A4 Container */
+        .a4-container {
+            width: 210mm;
+            min-height: 297mm;
+            margin: 0 auto;
+            background: #fff;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+            padding: 15mm;
+        }
+        
+        @media print {
+            .a4-container {
+                box-shadow: none !important;
+                border: none !important;
+                margin: 0 !important;
+                padding: 0 !important;
+                width: 100% !important;
+                min-height: auto !important;
+                background: transparent !important;
+            }
+            
+            body {
+                padding: 0 !important;
+                margin: 0 !important;
+                width: 100% !important;
+            }
+        }
     </style>
 </head>
 <body>
+    <div class="a4-container">
     <!-- Header dengan Logo dan Info seperti shipping_plan.xml -->
     <div class="print-header" style="margin-bottom: 15px;">
         <table style="width: 100%; border-collapse: collapse; border: none !important;">
             <tr style="border: none !important;">
                 <td style="vertical-align: top; border: none !important; padding: 0;">
-                    <h3 style="font-weight: bold; margin-bottom: -3px; font-size: 16pt; color: #000;">
+                    <h2 style="font-weight: bold; margin-bottom: -3px; font-size: 16pt; color: #000;">
                         SHIPPING PRODUCT
-                    </h3>
+                    </h2>
                     <?php if (!empty($shipping['description'])): ?>
-                    <h5 style="font-weight: bold; margin-top: 5px; font-size: 11pt; color: #000;">
+                    <h3 style="font-weight: bold; margin-top: 5px; font-size: 11pt; color: #000;">
                         <?= htmlspecialchars($shipping['description']) ?>
-                    </h5>
+                    </h3>
                     <?php endif; ?>
                 </td>
                 <td style="width: 20%; vertical-align: top; text-align: right; padding-left: 15px; border: none !important; padding-top: 0;">
@@ -702,7 +753,7 @@ error_log("=== M3 ASSIGN: Selesai assign M3 ===");
                                 <small style="color: #999;">LOGO</small>
                             </div>
                         <?php endif; ?>
-                        <div style="font-size: 9pt; color: #000; margin-top: -20px; white-space: nowrap; line-height: 1;">
+                        <div style="font-size: 9pt; color: #000; margin-top: -20px; margin-bottom: -25px; white-space: nowrap; line-height: 1;">
                             Printed on : <?= date('d M Y H:i:s') ?> (UTC+7)
                         </div>
                     </div>
@@ -749,16 +800,19 @@ error_log("=== M3 ASSIGN: Selesai assign M3 ===");
                         <th style="width: 7%;">Qty</th>
                         <th style="width: 10%;">Tot. Part</th>
                         <th style="width: 10%;">Tot. M3</th>
-                        <th style="width: 13%;">L. Perm</th>
                     </tr>
                 </thead>
                 <tbody>
                     <?php 
                     $product_no = 1;
                     $total_items = 0;
+                    $total_m3_all = 0;
                     foreach ($grouped_data as $group_key => $product_data): 
                         $items = $product_data['items'];
                         $total_items += count($items);
+                        // Hitung total M3
+                        $tot_m3 = $product_data['tot_m3'] ?? 0;
+                        $total_m3_all += $tot_m3;
                         $detail_no = 1;
                         $product_id = $product_data['product_id'];
                         $product_ref = $product_data['product_ref'];
@@ -781,11 +835,10 @@ error_log("=== M3 ASSIGN: Selesai assign M3 ===");
                             <td class="text-right"><?= $qty ?></td>
                             <td class="text-right"><?= $tot_part ?></td>
                             <td class="text-right"><?= $tot_m3 > 0 ? number_format($tot_m3, 3) : '-' ?></td>
-                            <td class="text-right">-</td>
                         </tr>
                         <!-- Detail Row -->
                         <tr class="detail-row">
-                            <td colspan="8" style="padding: 0; border-left: none; border-right: none;">
+                            <td colspan="7" style="padding: 0; border-left: none; border-right: none;">
                                 <div class="warna-label">Warna : <?= htmlspecialchars($finishing ?: '-') ?></div>
                                 <table class="detail-table">
                                     <thead>
@@ -813,8 +866,14 @@ error_log("=== M3 ASSIGN: Selesai assign M3 ===");
                     
                     <!-- Footer Row -->
                     <tr class="footer-row">
-                        <td colspan="8">
+                        <td colspan="5">
                             <strong>Jumlah Barang : <?= $total_items ?></strong>
+                        </td>
+                        <td class="text-right">
+                            <strong>Total :</strong>
+                        </td>
+                        <td class="text-right">
+                            <strong><?= number_format($total_m3_all, 3) ?></strong>
                         </td>
                     </tr>
                 </tbody>
@@ -830,12 +889,11 @@ error_log("=== M3 ASSIGN: Selesai assign M3 ===");
                         <th style="width: 7%;">Qty</th>
                         <th style="width: 10%;">Tot. Part</th>
                         <th style="width: 10%;">Tot. M3</th>
-                        <th style="width: 13%;">L. Perm</th>
                     </tr>
                 </thead>
                 <tbody>
                     <tr>
-                        <td colspan="8" class="no-data">Tidak ada data ditemukan</td>
+                        <td colspan="7" class="no-data">Tidak ada data ditemukan</td>
                     </tr>
                 </tbody>
             </table>
@@ -845,6 +903,8 @@ error_log("=== M3 ASSIGN: Selesai assign M3 ===");
     <div class="print-footer">
         <div>Printed on: <?= date('d M Y H:i:s') ?></div>
     </div>
+    
+    </div> <!-- End a4-container -->
     
     <script>
         window.onload = function() {
