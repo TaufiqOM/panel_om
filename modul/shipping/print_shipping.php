@@ -34,81 +34,225 @@ if ($result->num_rows == 0) {
 $shipping = $result->fetch_assoc();
 $stmt->close();
 
-// Query untuk mengambil data dari shipping_manual_stuffing, production_lots_strg, barcode_lot, dan barcode_item
-// GROUP BY production_code untuk memastikan tidak ada duplikasi di level query
-$query = "SELECT 
-    sms.production_code,
-    MAX(pls.sale_order_ref) AS client_order_ref,
-    MAX(COALESCE(bl.product_name, bi_lot.product_name)) AS product_name,
-    MAX(COALESCE(bl.product_id, bi.product_id, bi_lot.product_id)) AS product_id,
-    MAX(COALESCE(bl.product_ref, bi_lot.product_ref)) AS product_ref,
-    MAX(COALESCE(bl.finishing, bi_lot.finishing)) AS finishing,
-    TIME(MIN(sms.created_at)) AS created_time
-FROM shipping_manual_stuffing sms
-LEFT JOIN production_lots_strg pls ON pls.production_code = sms.production_code
-LEFT JOIN barcode_item bi ON bi.barcode = sms.production_code
-LEFT JOIN barcode_lot bi_lot ON bi_lot.id = bi.lot_id
-LEFT JOIN barcode_lot bl ON bl.sale_order_ref = pls.sale_order_ref
-WHERE sms.id_shipping = ?
-GROUP BY sms.production_code
-ORDER BY MAX(COALESCE(bl.product_name, bi_lot.product_name)), sms.production_code";
+// Ambil data pickings untuk shipping ini
+$sql_pickings = "SELECT id, name, sale_id, client_order_ref FROM shipping_detail WHERE id_shipping = ? ORDER BY sale_id, name";
+$stmt_pickings = $conn->prepare($sql_pickings);
+$stmt_pickings->bind_param("i", $shipping_id);
+$stmt_pickings->execute();
+$result_pickings = $stmt_pickings->get_result();
 
-$stmt_data = $conn->prepare($query);
-$stmt_data->bind_param("i", $shipping_id);
-$stmt_data->execute();
-$result_data = $stmt_data->get_result();
-$raw_data = [];
-while ($row = $result_data->fetch_assoc()) {
-    $raw_data[] = $row;
+$all_pickings = [];
+while ($picking = $result_pickings->fetch_assoc()) {
+    $all_pickings[] = $picking;
 }
-$stmt_data->close();
+$stmt_pickings->close();
 
-// Kelompokkan data berdasarkan product_id (bukan product_name atau reference) untuk menghindari duplikasi
-// Track production_code yang sudah digunakan untuk memastikan tidak ada duplikasi
-$used_codes = [];
-$grouped_data = [];
+// Ambil semua production_code dari shipping_manual_stuffing untuk mapping
+$sql_manual = "SELECT DISTINCT production_code FROM shipping_manual_stuffing WHERE id_shipping = ? ORDER BY production_code";
+$stmt_manual = $conn->prepare($sql_manual);
+$stmt_manual->bind_param("i", $shipping_id);
+$stmt_manual->execute();
+$result_manual = $stmt_manual->get_result();
 
-foreach ($raw_data as $row) {
-    $production_code = $row['production_code'] ?? '';
+$all_manual_codes = [];
+while ($manual = $result_manual->fetch_assoc()) {
+    $all_manual_codes[] = $manual['production_code'];
+}
+$stmt_manual->close();
+
+// Struktur baru: picking -> sale_order -> product
+$structured_data = [];
+
+// Loop per picking untuk mengumpulkan data
+foreach ($all_pickings as $picking_data) {
+    $picking_id = $picking_data['id'];
+    $picking_name = $picking_data['name'];
+    $sale_id = $picking_data['sale_id'] ?? 0;
+    $client_order_ref = $picking_data['client_order_ref'] ?? '';
     
-    // Skip jika production_code sudah digunakan (menghindari duplikasi)
-    if (empty($production_code) || isset($used_codes[$production_code])) {
+    // Ambil lots dari Odoo untuk picking ini
+    $picking_odoo = callOdooRead($username, 'stock.picking', [['id', '=', $picking_id]], ['move_line_ids_without_package']);
+    
+    $picking_lots = [];
+    if ($picking_odoo && !empty($picking_odoo)) {
+        $move_line_ids = $picking_odoo[0]['move_line_ids_without_package'] ?? [];
+        
+        if (!empty($move_line_ids)) {
+            $move_lines = callOdooRead($username, 'stock.move.line', [['id', 'in', $move_line_ids]], ['lot_id', 'lot_name', 'product_id', 'qty_done']);
+            
+            if ($move_lines && is_array($move_lines)) {
+                foreach ($move_lines as $line) {
+                    $lot_name = null;
+                    
+                    if (isset($line['lot_id']) && is_array($line['lot_id']) && count($line['lot_id']) >= 2) {
+                        $lot_name = $line['lot_id'][1];
+                    } else if (isset($line['lot_name']) && !empty($line['lot_name'])) {
+                        $lot_name = $line['lot_name'];
+                    }
+                    
+                    if ($lot_name && in_array($lot_name, $all_manual_codes)) {
+                        // Ambil product info
+                        $product_id = null;
+                        $product_name = null;
+                        if (isset($line['product_id']) && is_array($line['product_id']) && count($line['product_id']) >= 2) {
+                            $product_id = $line['product_id'][0];
+                            $product_name = $line['product_id'][1];
+                        }
+                        
+                        $picking_lots[] = [
+                            'lot_name' => $lot_name,
+                            'product_id' => $product_id,
+                            'product_name' => $product_name,
+                            'qty_done' => $line['qty_done'] ?? 0
+                        ];
+                    }
+                }
+            }
+        }
+    }
+    
+    // Jika tidak ada lots dari Odoo, skip picking ini
+    if (empty($picking_lots)) {
         continue;
     }
     
-    // Gunakan product_id sebagai key utama, jika tidak ada gunakan product_name
-    $product_id = $row['product_id'] ?? null;
-    $product_name = $row['product_name'] ?? 'Unknown';
+    // Gunakan client_order_ref dari DB lokal sebagai sale order info
+    // Karena sale_order_name tidak ada di DB, kita gunakan client_order_ref (PO) atau sale_id
+    $sale_order_name = $client_order_ref ?: ($sale_id ? "SO-$sale_id" : '');
     
-    // Buat key unik berdasarkan product_id atau product_name
-    $group_key = $product_id ? "product_{$product_id}" : "name_" . md5($product_name);
+    // Group lots per product_id dalam picking ini
+    $products_in_picking = [];
     
-    if (!isset($grouped_data[$group_key])) {
-        $grouped_data[$group_key] = [
-            'items' => [],
-            'product_id' => $product_id,
-            'product_name' => $product_name,
-            'product_ref' => $row['product_ref'] ?? null,
-            'finishing' => $row['finishing'] ?? null,
-            'qty' => 0,
-            'tot_part' => 0
+    foreach ($picking_lots as $lot) {
+        $product_id = $lot['product_id'] ?? 0;
+        $lot_name = $lot['lot_name'];
+        
+        if (!isset($products_in_picking[$product_id])) {
+            $products_in_picking[$product_id] = [
+                'product_id' => $product_id,
+                'product_name' => $lot['product_name'] ?? '-',
+                'items' => []
+            ];
+        }
+        
+        // Ambil data manual stuffing untuk lot ini
+        $sql_manual_detail = "SELECT 
+            sms.production_code,
+            pls.sale_order_ref AS client_order_ref,
+            COALESCE(bl.product_ref, bi_lot.product_ref) AS product_ref,
+            COALESCE(bl.finishing, bi_lot.finishing) AS finishing,
+            TIME(sms.created_at) AS created_time
+        FROM shipping_manual_stuffing sms
+        LEFT JOIN production_lots_strg pls ON pls.production_code = sms.production_code
+        LEFT JOIN barcode_item bi ON bi.barcode = sms.production_code
+        LEFT JOIN barcode_lot bi_lot ON bi_lot.id = bi.lot_id
+        LEFT JOIN barcode_lot bl ON bl.sale_order_ref = pls.sale_order_ref
+        WHERE sms.id_shipping = ? AND sms.production_code = ?
+        LIMIT 1";
+        
+        $stmt_detail = $conn->prepare($sql_manual_detail);
+        $stmt_detail->bind_param("is", $shipping_id, $lot_name);
+        $stmt_detail->execute();
+        $result_detail = $stmt_detail->get_result();
+        $manual_data = $result_detail->fetch_assoc();
+        $stmt_detail->close();
+        
+        $products_in_picking[$product_id]['items'][] = [
+            'production_code' => $lot_name,
+            'client_order_ref' => $manual_data['client_order_ref'] ?? $client_order_ref,
+            'product_ref' => $manual_data['product_ref'] ?? null,
+            'finishing' => $manual_data['finishing'] ?? null,
+            'created_time' => $manual_data['created_time'] ?? '-',
+            'qty_done' => $lot['qty_done']
         ];
     }
     
-    // Tambahkan item dan mark code sebagai used
-    $grouped_data[$group_key]['items'][] = $row;
-    $grouped_data[$group_key]['qty']++;
-    $grouped_data[$group_key]['tot_part']++;
-    $used_codes[$production_code] = true;
-    
-    // Update finishing jika belum ada dan row ini punya finishing
-    if (empty($grouped_data[$group_key]['finishing']) && !empty($row['finishing'])) {
-        $grouped_data[$group_key]['finishing'] = $row['finishing'];
+    // Tambahkan ke structured_data
+    if (!empty($products_in_picking)) {
+        $structured_data[] = [
+            'picking_id' => $picking_id,
+            'picking_name' => $picking_name,
+            'sale_id' => $sale_id,
+            'sale_order_name' => $sale_order_name,
+            'client_order_ref' => $client_order_ref,
+            'products' => array_values($products_in_picking)
+        ];
     }
+}
+
+    // Buat mapping production_code -> picking/so info untuk efisiensi
+$code_to_picking_map = [];
+foreach ($structured_data as $picking_group) {
+    $picking_name = $picking_group['picking_name'];
+    // Gunakan client_order_ref dari DB lokal, fallback ke sale_order_name jika ada
+    $so_info = $picking_group['client_order_ref'] ?: $picking_group['sale_order_name'] ?: ($picking_group['sale_id'] ? "SO-{$picking_group['sale_id']}" : '');
     
-    // Update product_ref jika belum ada
-    if (empty($grouped_data[$group_key]['product_ref']) && !empty($row['product_ref'])) {
-        $grouped_data[$group_key]['product_ref'] = $row['product_ref'];
+    foreach ($picking_group['products'] as $product) {
+        foreach ($product['items'] as $item) {
+            $production_code = $item['production_code'] ?? '';
+            if ($production_code) {
+                $code_to_picking_map[$production_code] = [
+                    'picking_name' => $picking_name,
+                    'so_info' => $so_info
+                ];
+            }
+        }
+    }
+}
+
+// Flatten untuk kompatibilitas dengan kode M3 yang sudah ada
+// Convert structured_data menjadi grouped_data format lama untuk M3 calculation
+$grouped_data = [];
+$used_codes = [];
+
+foreach ($structured_data as $picking_group) {
+    foreach ($picking_group['products'] as $product) {
+        $product_id = $product['product_id'] ?? 0;
+        $group_key = $product_id ? "product_{$product_id}" : "name_" . md5($product['product_name'] ?? 'Unknown');
+        
+        if (!isset($grouped_data[$group_key])) {
+            $grouped_data[$group_key] = [
+                'items' => [],
+                'product_id' => $product_id,
+                'product_name' => $product['product_name'] ?? 'Unknown',
+                'product_ref' => null,
+                'finishing' => null,
+                'qty' => 0,
+                'tot_part' => 0
+            ];
+        }
+        
+        // Tambahkan items dari product ini
+        foreach ($product['items'] as $item) {
+            $production_code = $item['production_code'] ?? '';
+            
+            // Skip jika sudah digunakan
+            if (empty($production_code) || isset($used_codes[$production_code])) {
+                continue;
+            }
+            
+            $grouped_data[$group_key]['items'][] = [
+                'production_code' => $production_code,
+                'client_order_ref' => $item['client_order_ref'] ?? '',
+                'product_id' => $product_id,
+                'product_name' => $product['product_name'] ?? 'Unknown',
+                'product_ref' => $item['product_ref'] ?? null,
+                'finishing' => $item['finishing'] ?? null,
+                'created_time' => $item['created_time'] ?? '-'
+            ];
+            
+            $grouped_data[$group_key]['qty']++;
+            $grouped_data[$group_key]['tot_part']++;
+            $used_codes[$production_code] = true;
+            
+            // Update finishing dan product_ref jika belum ada
+            if (empty($grouped_data[$group_key]['finishing']) && !empty($item['finishing'])) {
+                $grouped_data[$group_key]['finishing'] = $item['finishing'];
+            }
+            if (empty($grouped_data[$group_key]['product_ref']) && !empty($item['product_ref'])) {
+                $grouped_data[$group_key]['product_ref'] = $item['product_ref'];
+            }
+        }
     }
 }
 
@@ -971,19 +1115,34 @@ error_log("=== M3 ASSIGN: Selesai assign M3 ===");
                                 <table class="detail-table" style="margin: 0;">
                                     <thead>
                                         <tr>
-                                            <th style="width: 8%;">No</th>
-                                            <th style="width: 30%;">No Produk</th>
-                                            <th style="width: 20%;">Jam Proses</th>
-                                            <th style="width: 42%;">ID Order</th>
+                                            <th style="width: 6%;">No</th>
+                                            <th style="width: 25%;">No Produk</th>
+                                            <th style="width: 18%;">Jam Proses</th>
+                                            <th style="width: 25%;">ID Order</th>
+                                            <th style="width: 26%;">Picking / SO</th>
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        <?php foreach ($items as $data): ?>
+                                        <?php foreach ($items as $item_data): 
+                                            $item_production_code = $item_data['production_code'] ?? '';
+                                            $picking_info = '-';
+                                            $so_info = '-';
+                                            
+                                            // Ambil info dari mapping
+                                            if (isset($code_to_picking_map[$item_production_code])) {
+                                                $picking_info = $code_to_picking_map[$item_production_code]['picking_name'];
+                                                $so_info = $code_to_picking_map[$item_production_code]['so_info'];
+                                            }
+                                        ?>
                                             <tr>
                                                 <td class="text-center"><?= $detail_no++ ?></td>
-                                                <td class="text-left"><?= htmlspecialchars($data['production_code'] ?? '-') ?></td>
-                                                <td class="text-center"><?= htmlspecialchars($data['created_time'] ?? '-') ?></td>
-                                                <td class="text-left"><?= htmlspecialchars($data['client_order_ref'] ?? '-') ?></td>
+                                                <td class="text-left"><?= htmlspecialchars($item_production_code) ?></td>
+                                                <td class="text-center"><?= htmlspecialchars($item_data['created_time'] ?? '-') ?></td>
+                                                <td class="text-left"><?= htmlspecialchars($item_data['client_order_ref'] ?? '-') ?></td>
+                                                <td class="text-left" style="font-size: 8pt;">
+                                                    <div><?= htmlspecialchars($picking_info) ?></div>
+                                                    <div style="color: #666;"><?= htmlspecialchars($so_info) ?></div>
+                                                </td>
                                             </tr>
                                         <?php endforeach; ?>
                                     </tbody>

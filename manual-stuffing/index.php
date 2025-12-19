@@ -81,6 +81,31 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
     exit;
 }
 
+// Handle AJAX request to delete item
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'delete_item') {
+    header('Content-Type: application/json');
+    try {
+        $id = intval($_POST['id'] ?? 0);
+        if ($id <= 0) {
+            echo json_encode(['success' => false, 'message' => 'Invalid ID']);
+            exit;
+        }
+        $stmt_delete = $conn->prepare("DELETE FROM shipping_manual_stuffing WHERE id = ?");
+        if (!$stmt_delete) {
+            throw new Exception('Database prepare failed: ' . $conn->error);
+        }
+        $stmt_delete->bind_param("i", $id);
+        if (!$stmt_delete->execute()) {
+            throw new Exception('Database execute failed: ' . $stmt_delete->error);
+        }
+        $stmt_delete->close();
+        echo json_encode(['success' => true, 'message' => 'Berhasil dihapus']);
+    } catch (Exception $e) {
+        echo json_encode(['success' => false, 'message' => 'Error: ' . $e->getMessage()]);
+    }
+    exit;
+}
+
 $shipping_id = isset($_GET['id']) ? intval($_GET['id']) : 0;
 $shipping_data = null;
 
@@ -341,6 +366,7 @@ if ($shipping_id > 0) {
             display: flex;
             justify-content: space-between;
             align-items: center;
+            gap: 10px;
         }
 
         .list-item:last-child {
@@ -362,6 +388,47 @@ if ($shipping_id > 0) {
             font-family: 'Courier New', monospace;
             font-size: 16px;
             color: #333;
+            min-width: 0;
+            overflow-wrap: break-word;
+            word-break: break-all;
+        }
+
+        .item-actions {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-shrink: 0;
+        }
+
+        .btn-delete {
+            background: #f44336;
+            color: white;
+            border: none;
+            padding: 3px 5px;
+            border-radius: 3px;
+            cursor: pointer;
+            font-size: 11px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s ease;
+            min-width: 24px;
+            height: 24px;
+            line-height: 1;
+        }
+
+        .btn-delete:hover {
+            background: #d32f2f;
+            transform: scale(1.05);
+        }
+
+        .btn-delete:active {
+            transform: scale(0.95);
+        }
+
+        .btn-delete:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
         }
 
         .no-data {
@@ -434,6 +501,42 @@ if ($shipping_id > 0) {
             .counter-number {
                 font-size: 36px;
             }
+
+            .list-item {
+                padding: 12px 10px;
+                gap: 8px;
+            }
+
+            .item-number {
+                width: 30px;
+                font-size: 14px;
+                margin-right: 8px;
+            }
+
+            .item-code {
+                font-size: 14px;
+                flex: 1;
+                min-width: 0;
+            }
+
+            .item-actions {
+                flex-shrink: 0;
+            }
+
+            .btn-delete {
+                min-width: 28px;
+                height: 28px;
+                padding: 4px;
+                font-size: 12px;
+                border-radius: 4px;
+                /* Touch-friendly: larger tap target */
+                -webkit-tap-highlight-color: rgba(244, 67, 54, 0.2);
+            }
+
+            .btn-delete:active {
+                transform: scale(0.9);
+                background: #c62828;
+            }
         }
     </style>
 </head>
@@ -460,7 +563,7 @@ if ($shipping_id > 0) {
             </div>
 
             <?php
-            $stmt_stuffing = $conn->prepare("SELECT production_code FROM shipping_manual_stuffing WHERE id_shipping = ? ORDER BY id DESC");
+            $stmt_stuffing = $conn->prepare("SELECT id, production_code FROM shipping_manual_stuffing WHERE id_shipping = ? ORDER BY id DESC");
             $stmt_stuffing->bind_param("i", $shipping_id);
             $stmt_stuffing->execute();
             $result_stuffing = $stmt_stuffing->get_result();
@@ -513,9 +616,12 @@ if ($shipping_id > 0) {
                 <?php if (!empty($stuffing_data)): ?>
                     <div id="itemList">
                         <?php foreach ($stuffing_data as $index => $item): ?>
-                            <div class="list-item">
+                            <div class="list-item" data-id="<?php echo $item['id']; ?>">
                                 <span class="item-number"><?php echo $index + 1; ?>.</span>
                                 <span class="item-code"><?php echo htmlspecialchars($item['production_code']); ?></span>
+                                <div class="item-actions">
+                                    <button class="btn-delete" onclick="deleteItem(<?php echo $item['id']; ?>, this)" title="Hapus">🗑️</button>
+                                </div>
                             </div>
                         <?php endforeach; ?>
                     </div>
@@ -646,6 +752,77 @@ if ($shipping_id > 0) {
                     document.getElementById('searchInput').value = '';
                     updateSearch();
                 });
+
+                // Delete item functionality
+                function deleteItem(id, buttonElement) {
+                    Swal.fire({
+                        title: 'Hapus Item?',
+                        text: 'Apakah Anda yakin ingin menghapus item ini?',
+                        icon: 'warning',
+                        showCancelButton: true,
+                        confirmButtonColor: '#f44336',
+                        cancelButtonColor: '#6c757d',
+                        confirmButtonText: 'Ya, Hapus',
+                        cancelButtonText: 'Batal'
+                    }).then((result) => {
+                        if (result.isConfirmed) {
+                            // Disable button during request
+                            buttonElement.disabled = true;
+                            
+                            const formData = new FormData();
+                            formData.append('action', 'delete_item');
+                            formData.append('id', id);
+
+                            fetch('', {
+                                method: 'POST',
+                                body: formData
+                            })
+                            .then(response => response.json())
+                            .then(data => {
+                                if (data.success) {
+                                    showToast('Item berhasil dihapus', 'success');
+                                    
+                                    // Remove the item from DOM
+                                    const listItem = buttonElement.closest('.list-item');
+                                    listItem.style.transition = 'opacity 0.3s ease';
+                                    listItem.style.opacity = '0';
+                                    
+                                    setTimeout(() => {
+                                        listItem.remove();
+                                        
+                                        // Update counter
+                                        const items = document.querySelectorAll('.list-item');
+                                        document.getElementById('totalCount').textContent = items.length;
+                                        
+                                        // Update item numbers
+                                        items.forEach((item, index) => {
+                                            item.querySelector('.item-number').textContent = (index + 1) + '.';
+                                        });
+                                        
+                                        // If no items left, show no-data message
+                                        if (items.length === 0) {
+                                            const itemList = document.getElementById('itemList');
+                                            itemList.innerHTML = `
+                                                <div class="no-data">
+                                                    <div class="no-data-icon">📭</div>
+                                                    <p>Belum ada item yang discan</p>
+                                                </div>
+                                            `;
+                                        }
+                                    }, 300);
+                                } else {
+                                    showToast(data.message || 'Gagal menghapus item', 'error');
+                                    buttonElement.disabled = false;
+                                }
+                            })
+                            .catch(error => {
+                                console.error('Error:', error);
+                                showToast('Terjadi kesalahan saat menghapus', 'error');
+                                buttonElement.disabled = false;
+                            });
+                        }
+                    });
+                }
             </script>
         <?php endif; ?>
     </div>

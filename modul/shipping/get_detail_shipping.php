@@ -126,9 +126,11 @@ $group_ids = array_unique($group_ids);
 $po_map = [];
 if (!empty($group_ids)) {
     $sale_orders_data = callOdooRead($username, "sale.order", [["procurement_group_id", "in", $group_ids]], ["procurement_group_id", "client_order_ref"]);
-    foreach ($sale_orders_data as $so) {
-        if (is_array($so['procurement_group_id']) && count($so['procurement_group_id']) > 0) {
-            $po_map[$so['procurement_group_id'][0]] = $so['client_order_ref'];
+    if ($sale_orders_data && is_array($sale_orders_data)) {
+        foreach ($sale_orders_data as $so) {
+            if (is_array($so['procurement_group_id']) && count($so['procurement_group_id']) > 0) {
+                $po_map[$so['procurement_group_id'][0]] = $so['client_order_ref'];
+            }
         }
     }
 }
