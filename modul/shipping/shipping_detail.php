@@ -125,8 +125,17 @@ require_once __DIR__ . '/../../inc/config.php';
                                         <button class="btn btn-sm btn-icon btn-light-primary btn-print-shipping" 
                                                 data-id="<?= $row['id'] ?>" 
                                                 data-name="<?= htmlspecialchars($row['name']) ?>"
-                                                title="Print">
+                                                title="Print Shipping">
                                             <i class="ki-duotone ki-printer fs-2">
+                                                <span class="path1"></span>
+                                                <span class="path2"></span>
+                                            </i>
+                                        </button>
+                                        <button class="btn btn-sm btn-icon btn-light-success btn-print-manual-stuffing ms-2" 
+                                                data-id="<?= $row['id'] ?>" 
+                                                data-name="<?= htmlspecialchars($row['name']) ?>"
+                                                title="Print Manual Stuffing">
+                                            <i class="ki-duotone ki-file fs-2">
                                                 <span class="path1"></span>
                                                 <span class="path2"></span>
                                             </i>
@@ -400,6 +409,16 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     });
 
+    // Print Manual Stuffing button
+    const printManualStuffingButtons = document.querySelectorAll(".btn-print-manual-stuffing");
+    printManualStuffingButtons.forEach(btn => {
+        btn.addEventListener("click", function() {
+            const shippingId = this.dataset.id;
+            // Buka window baru untuk print manual stuffing
+            window.open('shipping/print_manual_stuffing.php?id=' + encodeURIComponent(shippingId), '_blank');
+        });
+    });
+
     // Pagination will handle showing the table
 });
 
@@ -560,7 +579,7 @@ function initializeCompareButton() {
             .then(response => response.json())
             .then(data => {
                 if (data.success) {
-                    displayComparisonResult(data.data);
+                    displayComparisonResult(data.data, data.barcodes_without_picking || []);
                     const resultSection = document.getElementById('comparisonResult');
                     resultSection.style.display = 'block';
                     
@@ -608,7 +627,7 @@ function initializeCompareButton() {
     }
 }
 
-function displayComparisonResult(data) {
+function displayComparisonResult(data, barcodesWithoutPicking) {
     const container = document.getElementById('comparisonContent');
     let html = '';
     
@@ -624,8 +643,9 @@ function displayComparisonResult(data) {
         data.forEach((pickingGroup, index) => {
             const totalMatched = pickingGroup.total_matched || 0;
             const totalOdooOnly = pickingGroup.total_odoo_only || 0;
-            const totalManualOnly = pickingGroup.total_manual_only || 0;
+            const totalDbOnly = pickingGroup.total_db_only || 0;
             const totalOdoo = pickingGroup.total_odoo || 0;
+            const totalDb = pickingGroup.total_db || 0;
             const matchPercentage = totalOdoo > 0 ? 
                 Math.round((totalMatched / totalOdoo) * 100) : 0;
             
@@ -660,7 +680,7 @@ function displayComparisonResult(data) {
                             <div class="stat-card matched">
                                 <div class="stat-number">${totalMatched}</div>
                                 <div class="stat-label">Sudah Sama</div>
-                                <small style="opacity: 0.8;">Odoo = Manual</small>
+                                <small style="opacity: 0.8;">Odoo = DB</small>
                             </div>
                             <div class="stat-card odoo-only">
                                 <div class="stat-number">${totalOdooOnly}</div>
@@ -668,10 +688,14 @@ function displayComparisonResult(data) {
                                 <small style="opacity: 0.8;">Kebanyakan (${totalOdooOnly} item)</small>
                             </div>
                             <div class="stat-card manual-only">
-                                <div class="stat-number">${totalManualOnly}</div>
-                                <div class="stat-label">Hanya Manual</div>
-                                <small style="opacity: 0.8;">Kurang (${totalManualOnly} item)</small>
+                                <div class="stat-number">${totalDbOnly}</div>
+                                <div class="stat-label">Hanya di DB</div>
+                                <small style="opacity: 0.8;">Kurang (${totalDbOnly} item)</small>
                             </div>
+                        </div>
+                        <div class="mb-2 text-center" style="font-size: 0.75rem;">
+                            <span class="badge badge-info me-2">Odoo: ${totalOdoo} barcode</span>
+                            <span class="badge badge-warning">DB: ${totalDb} barcode</span>
                         </div>
                         
                         <!-- Detail Per Product -->
@@ -717,6 +741,73 @@ function displayComparisonResult(data) {
             initProcessBarcodeButtons();
             initToggleCodeButtons();
         }, 100);
+    }
+    
+    // Tampilkan barcode tanpa picking di bagian bawah (warna merah)
+    if (barcodesWithoutPicking && barcodesWithoutPicking.length > 0) {
+        html += `
+            <div class="mt-4">
+                <div class="card" style="border: 2px solid #dc3545; border-radius: 6px; background-color: #fff5f5;">
+                    <div class="card-header" style="background-color: #dc3545; color: white; padding: 10px 15px;">
+                        <h6 class="mb-0" style="font-size: 0.9rem; font-weight: 600;">
+                            <i class="ki-duotone ki-cross-circle fs-4 me-1">
+                                <span class="path1"></span>
+                                <span class="path2"></span>
+                            </i>
+                            Barcode Tanpa Picking di Odoo
+                        </h6>
+                    </div>
+                    <div class="card-body p-3">
+                        ${barcodesWithoutPicking.map((group, groupIndex) => {
+                            const saleDisplay = group.sale_order_name 
+                                ? `SO: ${group.sale_order_name}` 
+                                : (group.sale_order_id ? `Sale ID: ${group.sale_order_id}` : 'Tidak diketahui');
+                            
+                            return `
+                                <div class="mb-3 ${groupIndex > 0 ? 'mt-3 pt-3 border-top' : ''}" style="border-color: #ffcccc !important;">
+                                    <div class="mb-2">
+                                        <strong style="color: #dc3545; font-size: 0.85rem;">
+                                            <i class="ki-duotone ki-file fs-5 me-1">
+                                                <span class="path1"></span>
+                                                <span class="path2"></span>
+                                            </i>
+                                            Seharusnya di Picking: ${saleDisplay}
+                                        </strong>
+                                    </div>
+                                    <div class="mb-2" style="font-size: 0.75rem;">
+                                        <span class="badge badge-info me-2" style="background-color: #17a2b8;">
+                                            <i class="ki-duotone ki-chart fs-6 me-1">
+                                                <span class="path1"></span>
+                                                <span class="path2"></span>
+                                            </i>
+                                            Di Odoo: ${group.count_odoo || 0} barcode
+                                        </span>
+                                        <span class="badge badge-warning" style="background-color: #ffc107; color: #000;">
+                                            <i class="ki-duotone ki-chart fs-6 me-1">
+                                                <span class="path1"></span>
+                                                <span class="path2"></span>
+                                            </i>
+                                            Di Manual Stuffing: ${group.count_manual || 0} barcode
+                                        </span>
+                                    </div>
+                                    <div class="d-flex flex-wrap gap-2">
+                                        ${group.barcodes.map(barcode => `
+                                            <span class="badge badge-danger badge-lg" style="font-size: 0.8rem; padding: 6px 10px; background-color: #dc3545;">
+                                                ${barcode.barcode}
+                                                ${barcode.product_id ? `<small style="opacity: 0.8;"> (Product ID: ${barcode.product_id})</small>` : ''}
+                                            </span>
+                                        `).join('')}
+                                    </div>
+                                    <small class="text-muted d-block mt-2" style="font-size: 0.7rem;">
+                                        Total barcode tanpa picking: ${group.barcodes.length} barcode
+                                    </small>
+                                </div>
+                            `;
+                        }).join('')}
+                    </div>
+                </div>
+            </div>
+        `;
     }
     
     container.innerHTML = html;
@@ -789,7 +880,7 @@ function initProcessBarcodeButtons() {
 
 // Initialize toggle buttons untuk show/hide detail codes
 function initToggleCodeButtons() {
-    // Handle toggle buttons untuk collapse detail codes
+    // Handle toggle buttons untuk collapse detail codes (matched codes)
     const toggleButtons = document.querySelectorAll('[data-bs-toggle="collapse"][data-bs-target^="#matchedCodes-"]');
     toggleButtons.forEach(btn => {
         const targetId = btn.getAttribute('data-bs-target');
@@ -811,6 +902,37 @@ function initToggleCodeButtons() {
                 const toggleText = btn.querySelector('.toggle-text');
                 const toggleIcon = btn.querySelector('.toggle-icon');
                 if (toggleText) toggleText.textContent = 'Lihat Detail Code yang Cocok';
+                if (toggleIcon) {
+                    toggleIcon.className = 'ki-duotone ki-down fs-6 me-1 toggle-icon';
+                    toggleIcon.innerHTML = '<span class="path1"></span><span class="path2"></span>';
+                }
+                btn.classList.add('collapsed');
+            });
+        }
+    });
+    
+    // Handle toggle buttons untuk collapse perbandingan 2 sisi
+    const comparisonToggleButtons = document.querySelectorAll('[data-bs-toggle="collapse"][data-bs-target^="#comparison-"]');
+    comparisonToggleButtons.forEach(btn => {
+        const targetId = btn.getAttribute('data-bs-target');
+        const targetElement = document.querySelector(targetId);
+        
+        if (targetElement) {
+            targetElement.addEventListener('show.bs.collapse', function() {
+                const toggleText = btn.querySelector('.toggle-text');
+                const toggleIcon = btn.querySelector('.toggle-icon');
+                if (toggleText) toggleText.textContent = 'Sembunyikan Perbandingan 2 Sisi';
+                if (toggleIcon) {
+                    toggleIcon.className = 'ki-duotone ki-up fs-6 me-1 toggle-icon';
+                    toggleIcon.innerHTML = '<span class="path1"></span><span class="path2"></span>';
+                }
+                btn.classList.remove('collapsed');
+            });
+            
+            targetElement.addEventListener('hide.bs.collapse', function() {
+                const toggleText = btn.querySelector('.toggle-text');
+                const toggleIcon = btn.querySelector('.toggle-icon');
+                if (toggleText) toggleText.textContent = 'Lihat Perbandingan 2 Sisi';
                 if (toggleIcon) {
                     toggleIcon.className = 'ki-duotone ki-down fs-6 me-1 toggle-icon';
                     toggleIcon.innerHTML = '<span class="path1"></span><span class="path2"></span>';
@@ -1066,17 +1188,19 @@ function renderProductDetail(product, pickingDetails) {
 // Render product detail untuk struktur baru (per picking)
 function renderProductDetailPicking(product, pickingId, productIndex) {
     const productName = product.product_name || `Product ID: ${product.product_id || '-'}`;
-    const totalMatched = product.total_matched || 0;
-    const totalOdooOnly = product.total_odoo_only || 0;
-    const totalManualOnly = product.total_manual_only || 0;
     const productId = product.product_id || 0;
+    
+    // Data dari struktur baru
+    const odooSide = product.odoo_side || { barcodes: [], count: 0 };
+    const dbSide = product.db_side || { barcodes: [], count: 0 };
+    const matched = product.matched || { barcodes: [], count: 0 };
+    const odooOnly = product.odoo_only || { barcodes: [], count: 0 };
+    const dbOnly = product.db_only || { barcodes: [], count: 0 };
+    
     // Sanitize ID untuk menghindari karakter yang tidak valid
     const sanitizedPickingId = String(pickingId).replace(/[^a-zA-Z0-9]/g, '_');
     const sanitizedProductId = String(productId).replace(/[^a-zA-Z0-9]/g, '_');
-    const uniqueId = `matched-${sanitizedPickingId}-${sanitizedProductId}-${productIndex}`;
-    
-    // Ambil matched codes
-    const matchedCodes = product.matched || [];
+    const uniqueId = `product-${sanitizedPickingId}-${sanitizedProductId}-${productIndex}`;
     
     return `
         <div class="card mb-2" style="border: 1px solid #dee2e6; border-radius: 6px;">
@@ -1092,69 +1216,195 @@ function renderProductDetailPicking(product, pickingId, productIndex) {
                 <div class="row g-2 mb-2">
                     <div class="col-4">
                         <div class="text-center p-1" style="background: #d4edda; border-radius: 4px; border: 1px solid #c3e6cb;">
-                            <div style="font-size: 1.1rem; font-weight: bold; color: #155724;">${totalMatched}</div>
+                            <div style="font-size: 1.1rem; font-weight: bold; color: #155724;">${matched.count}</div>
                             <small style="font-size: 0.65rem; color: #155724;">Cocok</small>
                         </div>
                     </div>
                     <div class="col-4">
                         <div class="text-center p-1" style="background: #fff3cd; border-radius: 4px; border: 1px solid #ffeaa7;">
-                            <div style="font-size: 1.1rem; font-weight: bold; color: #856404;">${totalOdooOnly}</div>
-                            <small style="font-size: 0.65rem; color: #856404;">Kebanyakan</small>
+                            <div style="font-size: 1.1rem; font-weight: bold; color: #856404;">${odooOnly.count}</div>
+                            <small style="font-size: 0.65rem; color: #856404;">Hanya Odoo</small>
                         </div>
                     </div>
                     <div class="col-4">
                         <div class="text-center p-1" style="background: #d1ecf1; border-radius: 4px; border: 1px solid #bee5eb;">
-                            <div style="font-size: 1.1rem; font-weight: bold; color: #0c5460;">${totalManualOnly}</div>
-                            <small style="font-size: 0.65rem; color: #0c5460;">Kurang</small>
+                            <div style="font-size: 1.1rem; font-weight: bold; color: #0c5460;">${dbOnly.count}</div>
+                            <small style="font-size: 0.65rem; color: #0c5460;">Hanya DB</small>
                         </div>
                     </div>
                 </div>
                 
-                <div class="mt-2">
-                    <small class="text-muted" style="font-size: 0.7rem;">
-                        Total Odoo: <strong>${totalMatched + totalOdooOnly}</strong> | 
-                        Total Manual: <strong>${totalMatched + totalManualOnly}</strong>
-                    </small>
+                <div class="mt-2 mb-2">
+                    <div class="row g-2">
+                        <div class="col-6">
+                            <div class="text-center p-1" style="background: #e7f3ff; border-radius: 4px; border: 1px solid #b3d9ff;">
+                                <small style="font-size: 0.65rem; color: #004085; font-weight: 600;">Sisi Odoo</small>
+                                <div style="font-size: 0.9rem; font-weight: bold; color: #004085;">${odooSide.count} barcode</div>
+                            </div>
+                        </div>
+                        <div class="col-6">
+                            <div class="text-center p-1" style="background: #fff5e6; border-radius: 4px; border: 1px solid #ffd9b3;">
+                                <small style="font-size: 0.65rem; color: #856404; font-weight: 600;">Sisi DB</small>
+                                <div style="font-size: 0.9rem; font-weight: bold; color: #856404;">${dbSide.count} barcode</div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
                 
-                <!-- Button untuk show/hide detail codes yang cocok -->
-                ${totalMatched > 0 ? `
+                <!-- Perbandingan 2 Sisi -->
                 <div class="mt-2">
-                    <button class="btn btn-sm btn-outline-success w-100 text-start collapsed" type="button" 
+                    <button class="btn btn-sm btn-outline-primary w-100 text-start collapsed" type="button" 
                             data-bs-toggle="collapse" 
-                            data-bs-target="#matchedCodes-${uniqueId}" 
+                            data-bs-target="#comparison-${uniqueId}" 
                             aria-expanded="false"
-                            aria-controls="matchedCodes-${uniqueId}"
+                            aria-controls="comparison-${uniqueId}"
                             style="font-size: 0.75rem;">
                         <i class="ki-duotone ki-down fs-6 me-1 toggle-icon">
                             <span class="path1"></span>
                             <span class="path2"></span>
                         </i>
-                        <span class="toggle-text">Lihat Detail Code yang Cocok</span> (${totalMatched} code)
+                        <span class="toggle-text">Lihat Perbandingan 2 Sisi</span>
                     </button>
                 </div>
-                <div class="collapse mt-2" id="matchedCodes-${uniqueId}">
-                    <div class="card" style="background: #f8f9fa; border: 1px solid #d4edda;">
-                        <div class="card-body p-2">
-                            <h6 class="mb-2" style="font-size: 0.75rem; font-weight: 600; color: #155724;">
-                                <i class="ki-duotone ki-check-circle fs-5 me-1" style="color: #28a745;">
-                                    <span class="path1"></span>
-                                    <span class="path2"></span>
-                                </i>
-                                Code yang Cocok (${totalMatched})
-                            </h6>
-                            <div class="d-flex flex-wrap gap-1">
-                                ${matchedCodes.map(code => `
-                                    <span class="badge badge-success badge-sm" style="font-size: 0.7rem; padding: 4px 8px;">
-                                        ${code.code}
-                                        ${code.qty && code.qty !== '-' ? `<small style="opacity: 0.8;"> (Qty: ${code.qty})</small>` : ''}
-                                    </span>
-                                `).join('')}
+                <div class="collapse mt-2" id="comparison-${uniqueId}">
+                    <div class="row g-2">
+                        <!-- Sisi Odoo -->
+                        <div class="col-6">
+                            <div class="card" style="background: #e7f3ff; border: 1px solid #b3d9ff;">
+                                <div class="card-header p-2" style="background: #b3d9ff; border-bottom: 1px solid #b3d9ff;">
+                                    <h6 class="mb-0" style="font-size: 0.75rem; font-weight: 600; color: #004085;">
+                                        <i class="ki-duotone ki-chart fs-5 me-1">
+                                            <span class="path1"></span>
+                                            <span class="path2"></span>
+                                        </i>
+                                        Sisi Odoo (${odooSide.count})
+                                    </h6>
+                                </div>
+                                <div class="card-body p-2" style="max-height: 300px; overflow-y: auto;">
+                                    ${odooSide.barcodes.length > 0 ? `
+                                        <div class="d-flex flex-wrap gap-1">
+                                            ${odooSide.barcodes.map(barcode => `
+                                                <span class="badge badge-info badge-sm" style="font-size: 0.7rem; padding: 4px 8px;">
+                                                    ${barcode.code}
+                                                    ${barcode.qty && barcode.qty !== '-' ? `<small style="opacity: 0.8;"> (Qty: ${barcode.qty})</small>` : ''}
+                                                </span>
+                                            `).join('')}
+                                        </div>
+                                    ` : '<small class="text-muted">Tidak ada barcode</small>'}
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Sisi DB -->
+                        <div class="col-6">
+                            <div class="card" style="background: #fff5e6; border: 1px solid #ffd9b3;">
+                                <div class="card-header p-2" style="background: #ffd9b3; border-bottom: 1px solid #ffd9b3;">
+                                    <h6 class="mb-0" style="font-size: 0.75rem; font-weight: 600; color: #856404;">
+                                        <i class="ki-duotone ki-database fs-5 me-1">
+                                            <span class="path1"></span>
+                                            <span class="path2"></span>
+                                        </i>
+                                        Sisi DB (${dbSide.count})
+                                    </h6>
+                                </div>
+                                <div class="card-body p-2" style="max-height: 300px; overflow-y: auto;">
+                                    ${dbSide.barcodes.length > 0 ? `
+                                        <div class="d-flex flex-wrap gap-1">
+                                            ${dbSide.barcodes.map(barcode => `
+                                                <span class="badge badge-warning badge-sm" style="font-size: 0.7rem; padding: 4px 8px; color: #000;">
+                                                    ${barcode.code}
+                                                </span>
+                                            `).join('')}
+                                        </div>
+                                    ` : '<small class="text-muted">Tidak ada barcode</small>'}
+                                </div>
                             </div>
                         </div>
                     </div>
+                    
+                    <!-- Matched, Odoo Only, DB Only -->
+                    <div class="row g-2 mt-2">
+                        <!-- Matched -->
+                        ${matched.count > 0 ? `
+                        <div class="col-12">
+                            <div class="card" style="background: #d4edda; border: 1px solid #c3e6cb;">
+                                <div class="card-header p-2" style="background: #c3e6cb; border-bottom: 1px solid #c3e6cb;">
+                                    <h6 class="mb-0" style="font-size: 0.75rem; font-weight: 600; color: #155724;">
+                                        <i class="ki-duotone ki-check-circle fs-5 me-1">
+                                            <span class="path1"></span>
+                                            <span class="path2"></span>
+                                        </i>
+                                        Cocok (${matched.count})
+                                    </h6>
+                                </div>
+                                <div class="card-body p-2">
+                                    <div class="d-flex flex-wrap gap-1">
+                                        ${matched.barcodes.map(barcode => `
+                                            <span class="badge badge-success badge-sm" style="font-size: 0.7rem; padding: 4px 8px;">
+                                                ${barcode.code}
+                                                ${barcode.qty_odoo && barcode.qty_odoo !== '-' ? `<small style="opacity: 0.8;"> (Qty Odoo: ${barcode.qty_odoo})</small>` : ''}
+                                            </span>
+                                        `).join('')}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        ` : ''}
+                        
+                        <!-- Odoo Only -->
+                        ${odooOnly.count > 0 ? `
+                        <div class="col-12">
+                            <div class="card" style="background: #fff3cd; border: 1px solid #ffeaa7;">
+                                <div class="card-header p-2" style="background: #ffeaa7; border-bottom: 1px solid #ffeaa7;">
+                                    <h6 class="mb-0" style="font-size: 0.75rem; font-weight: 600; color: #856404;">
+                                        <i class="ki-duotone ki-information fs-5 me-1">
+                                            <span class="path1"></span>
+                                            <span class="path2"></span>
+                                        </i>
+                                        Hanya di Odoo (${odooOnly.count})
+                                    </h6>
+                                </div>
+                                <div class="card-body p-2">
+                                    <div class="d-flex flex-wrap gap-1">
+                                        ${odooOnly.barcodes.map(barcode => `
+                                            <span class="badge badge-warning badge-sm" style="font-size: 0.7rem; padding: 4px 8px; color: #000;">
+                                                ${barcode.code}
+                                                ${barcode.qty && barcode.qty !== '-' ? `<small style="opacity: 0.8;"> (Qty: ${barcode.qty})</small>` : ''}
+                                            </span>
+                                        `).join('')}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        ` : ''}
+                        
+                        <!-- DB Only -->
+                        ${dbOnly.count > 0 ? `
+                        <div class="col-12">
+                            <div class="card" style="background: #d1ecf1; border: 1px solid #bee5eb;">
+                                <div class="card-header p-2" style="background: #bee5eb; border-bottom: 1px solid #bee5eb;">
+                                    <h6 class="mb-0" style="font-size: 0.75rem; font-weight: 600; color: #0c5460;">
+                                        <i class="ki-duotone ki-information fs-5 me-1">
+                                            <span class="path1"></span>
+                                            <span class="path2"></span>
+                                        </i>
+                                        Hanya di DB (${dbOnly.count})
+                                    </h6>
+                                </div>
+                                <div class="card-body p-2">
+                                    <div class="d-flex flex-wrap gap-1">
+                                        ${dbOnly.barcodes.map(barcode => `
+                                            <span class="badge badge-info badge-sm" style="font-size: 0.7rem; padding: 4px 8px;">
+                                                ${barcode.code}
+                                            </span>
+                                        `).join('')}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        ` : ''}
+                    </div>
                 </div>
-                ` : ''}
             </div>
         </div>
     `;

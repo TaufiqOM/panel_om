@@ -1,6 +1,36 @@
 <?php
 // No login required for this page
 require __DIR__ . '/../inc/config.php';
+require __DIR__ . '/../inc/config_odoo.php';
+
+// Function untuk mendapatkan gambar base64
+function getImageBase64($imageData)
+{
+    if (empty($imageData)) return null;
+
+    // Jika datanya belum base64 (masih blob biner)
+    if (base64_encode(base64_decode($imageData, true)) !== $imageData) {
+        $imageData = base64_encode($imageData);
+    }
+
+    // Deteksi tipe MIME berdasarkan header base64
+    if (strpos($imageData, '/9j/') === 0 || strpos($imageData, 'data:image/jpeg') === 0) {
+        $mime = 'image/jpeg';
+    } elseif (strpos($imageData, 'iVBOR') === 0 || strpos($imageData, 'data:image/png') === 0) {
+        $mime = 'image/png';
+    } elseif (strpos($imageData, 'R0lGOD') === 0 || strpos($imageData, 'data:image/gif') === 0) {
+        $mime = 'image/gif';
+    } else {
+        $mime = 'image/jpeg'; // default
+    }
+
+    // Jika sudah ada data:image prefix, return langsung
+    if (strpos($imageData, 'data:image') === 0) {
+        return $imageData;
+    }
+
+    return "data:$mime;base64,$imageData";
+}
 
 // Handle AJAX request to check code
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'check_code') {
@@ -50,6 +80,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
             echo json_encode(['success' => false, 'message' => 'Invalid shipping ID']);
             exit;
         }
+        
+        // Validasi: Cek apakah barcode sudah ada di shipping_manual_stuffing untuk shipping_id ini
+        $stmt_duplicate = $conn->prepare("SELECT id FROM shipping_manual_stuffing WHERE id_shipping = ? AND production_code = ?");
+        if (!$stmt_duplicate) {
+            throw new Exception('Database prepare failed: ' . $conn->error);
+        }
+        $stmt_duplicate->bind_param("is", $shipping_id, $barcode);
+        if (!$stmt_duplicate->execute()) {
+            throw new Exception('Database execute failed: ' . $stmt_duplicate->error);
+        }
+        $result_duplicate = $stmt_duplicate->get_result();
+        $is_duplicate = $result_duplicate->num_rows > 0;
+        $stmt_duplicate->close();
+        
+        if ($is_duplicate) {
+            echo json_encode(['success' => false, 'message' => 'Barcode sudah di scan']);
+            exit;
+        }
+        
+        // Cek apakah barcode ada di production_lots_strg
         $stmt_check = $conn->prepare("SELECT production_code FROM production_lots_strg WHERE production_code = ?");
         if (!$stmt_check) {
             throw new Exception('Database prepare failed: ' . $conn->error);
@@ -61,6 +111,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
         $result_check = $stmt_check->get_result();
         $exists = $result_check->num_rows > 0;
         $stmt_check->close();
+        
         if ($exists) {
             $stmt_insert = $conn->prepare("INSERT INTO shipping_manual_stuffing (id_shipping, production_code) VALUES (?, ?)");
             if (!$stmt_insert) {
@@ -365,8 +416,32 @@ if ($shipping_id > 0) {
             border-bottom: 1px solid #eee;
             display: flex;
             justify-content: space-between;
-            align-items: center;
+            align-items: flex-start;
             gap: 10px;
+        }
+
+        .item-image {
+            width: 60px;
+            height: 60px;
+            object-fit: cover;
+            border-radius: 8px;
+            border: 2px solid #e9ecef;
+            flex-shrink: 0;
+            background: #f8f9fa;
+        }
+
+        .item-image-placeholder {
+            width: 60px;
+            height: 60px;
+            border-radius: 8px;
+            border: 2px solid #e9ecef;
+            flex-shrink: 0;
+            background: #f8f9fa;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #999;
+            font-size: 24px;
         }
 
         .list-item:last-child {
@@ -391,6 +466,37 @@ if ($shipping_id > 0) {
             min-width: 0;
             overflow-wrap: break-word;
             word-break: break-all;
+        }
+
+        .item-product-name {
+            flex: 1;
+            font-size: 13px;
+            color: #555;
+            font-weight: 500;
+            margin-top: 4px;
+            padding-left: 0;
+            min-width: 0;
+            overflow-wrap: break-word;
+            word-break: break-word;
+        }
+
+        .item-info {
+            flex: 1;
+            font-size: 12px;
+            color: #666;
+            font-style: italic;
+            margin-top: 4px;
+            padding-left: 0;
+            min-width: 0;
+            overflow-wrap: break-word;
+            word-break: break-word;
+        }
+
+        .item-content {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            min-width: 0;
         }
 
         .item-actions {
@@ -507,6 +613,17 @@ if ($shipping_id > 0) {
                 gap: 8px;
             }
 
+            .item-image {
+                width: 50px;
+                height: 50px;
+            }
+
+            .item-image-placeholder {
+                width: 50px;
+                height: 50px;
+                font-size: 20px;
+            }
+
             .item-number {
                 width: 30px;
                 font-size: 14px;
@@ -515,6 +632,20 @@ if ($shipping_id > 0) {
 
             .item-code {
                 font-size: 14px;
+                flex: 1;
+                min-width: 0;
+            }
+
+            .item-product-name {
+                font-size: 12px;
+            }
+
+            .item-info {
+                font-size: 11px;
+                display: none; /* Sembunyikan info_to_buyer di mobile */
+            }
+
+            .item-content {
                 flex: 1;
                 min-width: 0;
             }
@@ -563,12 +694,78 @@ if ($shipping_id > 0) {
             </div>
 
             <?php
-            $stmt_stuffing = $conn->prepare("SELECT id, production_code FROM shipping_manual_stuffing WHERE id_shipping = ? ORDER BY id DESC");
+            // Ambil data stuffing dengan sale_order_line_id dari production_lots_strg
+            $stmt_stuffing = $conn->prepare("
+                SELECT 
+                    sms.id, 
+                    sms.production_code,
+                    pls.sale_order_line_id
+                FROM shipping_manual_stuffing sms
+                LEFT JOIN production_lots_strg pls ON pls.production_code = sms.production_code
+                WHERE sms.id_shipping = ? 
+                ORDER BY sms.id DESC
+            ");
             $stmt_stuffing->bind_param("i", $shipping_id);
             $stmt_stuffing->execute();
             $result_stuffing = $stmt_stuffing->get_result();
             $stuffing_data = [];
+            $username = $_SESSION['username'] ?? '';
+            
+            // Cache untuk info_to_buyer, product_name, dan product_image berdasarkan sale_order_line_id
+            $order_line_cache = [];
+            $product_image_cache = [];
+            
             while ($row = $result_stuffing->fetch_assoc()) {
+                $sale_order_line_id = $row['sale_order_line_id'] ?? null;
+                $info_to_buyer = '';
+                $product_name = '';
+                $product_image = null;
+                
+                // Ambil info_to_buyer, product_name, dan product_id dari Odoo jika sale_order_line_id tersedia
+                if ($sale_order_line_id && !isset($order_line_cache[$sale_order_line_id])) {
+                    $order_lines = callOdooRead($username, "sale.order.line", [["id", "=", $sale_order_line_id]], ["info_to_buyer", "name", "product_id"]);
+                    if ($order_lines && !empty($order_lines)) {
+                        $info_to_buyer = $order_lines[0]['info_to_buyer'] ?? '';
+                        $product_name = $order_lines[0]['name'] ?? '';
+                        $product_id = is_array($order_lines[0]['product_id']) ? $order_lines[0]['product_id'][0] : ($order_lines[0]['product_id'] ?? null);
+                        
+                        $order_line_cache[$sale_order_line_id] = [
+                            'info_to_buyer' => $info_to_buyer,
+                            'product_name' => $product_name,
+                            'product_id' => $product_id
+                        ];
+                    } else {
+                        $order_line_cache[$sale_order_line_id] = [
+                            'info_to_buyer' => '',
+                            'product_name' => '',
+                            'product_id' => null
+                        ];
+                    }
+                } elseif ($sale_order_line_id && isset($order_line_cache[$sale_order_line_id])) {
+                    $info_to_buyer = $order_line_cache[$sale_order_line_id]['info_to_buyer'];
+                    $product_name = $order_line_cache[$sale_order_line_id]['product_name'];
+                    $product_id = $order_line_cache[$sale_order_line_id]['product_id'];
+                } else {
+                    $product_id = null;
+                }
+                
+                // Ambil product image dari Odoo jika product_id tersedia
+                if ($product_id && !isset($product_image_cache[$product_id])) {
+                    $product_data = callOdooRead($username, "product.product", [["id", "=", $product_id]], ["image_1920"]);
+                    if ($product_data && !empty($product_data) && isset($product_data[0]['image_1920'])) {
+                        $image_data = $product_data[0]['image_1920'];
+                        $product_image = getImageBase64($image_data);
+                        $product_image_cache[$product_id] = $product_image;
+                    } else {
+                        $product_image_cache[$product_id] = null;
+                    }
+                } elseif ($product_id && isset($product_image_cache[$product_id])) {
+                    $product_image = $product_image_cache[$product_id];
+                }
+                
+                $row['info_to_buyer'] = $info_to_buyer;
+                $row['product_name'] = $product_name;
+                $row['product_image'] = $product_image;
                 $stuffing_data[] = $row;
             }
             $stmt_stuffing->close();
@@ -617,8 +814,22 @@ if ($shipping_id > 0) {
                     <div id="itemList">
                         <?php foreach ($stuffing_data as $index => $item): ?>
                             <div class="list-item" data-id="<?php echo $item['id']; ?>">
+                                <?php if (!empty($item['product_image'])): ?>
+                                    <img src="<?php echo htmlspecialchars($item['product_image']); ?>" alt="Product" class="item-image" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
+                                    <div class="item-image-placeholder" style="display: none;">📦</div>
+                                <?php else: ?>
+                                    <div class="item-image-placeholder">📦</div>
+                                <?php endif; ?>
                                 <span class="item-number"><?php echo $index + 1; ?>.</span>
-                                <span class="item-code"><?php echo htmlspecialchars($item['production_code']); ?></span>
+                                <div class="item-content">
+                                    <span class="item-code"><?php echo htmlspecialchars($item['production_code']); ?></span>
+                                    <?php if (!empty($item['product_name'])): ?>
+                                        <span class="item-product-name">📦 <?php echo htmlspecialchars($item['product_name']); ?></span>
+                                    <?php endif; ?>
+                                    <?php if (!empty($item['info_to_buyer'])): ?>
+                                        <span class="item-info">ℹ️ <?php echo htmlspecialchars($item['info_to_buyer']); ?></span>
+                                    <?php endif; ?>
+                                </div>
                                 <div class="item-actions">
                                     <button class="btn-delete" onclick="deleteItem(<?php echo $item['id']; ?>, this)" title="Hapus">🗑️</button>
                                 </div>
@@ -728,7 +939,11 @@ if ($shipping_id > 0) {
 
                     items.forEach(item => {
                         const code = item.querySelector('.item-code').textContent.toLowerCase();
-                        if (code.includes(searchTerm)) {
+                        const productName = item.querySelector('.item-product-name');
+                        const productNameText = productName ? productName.textContent.toLowerCase() : '';
+                        const info = item.querySelector('.item-info');
+                        const infoText = info ? info.textContent.toLowerCase() : '';
+                        if (code.includes(searchTerm) || productNameText.includes(searchTerm) || infoText.includes(searchTerm)) {
                             item.style.display = '';
                             visibleCount++;
                         } else {

@@ -180,12 +180,41 @@ foreach ($all_pickings as $picking_data) {
     }
 }
 
+// Ambil nama SO dari Odoo untuk semua sale_id yang ada
+$sale_id_to_name = [];
+$unique_sale_ids = [];
+foreach ($structured_data as $picking_group) {
+    $sale_id = $picking_group['sale_id'] ?? 0;
+    if ($sale_id > 0 && !in_array($sale_id, $unique_sale_ids)) {
+        $unique_sale_ids[] = $sale_id;
+    }
+}
+
+// Ambil nama SO dari Odoo
+if (!empty($unique_sale_ids) && !empty($username)) {
+    $sale_orders = callOdooRead($username, 'sale.order', [['id', 'in', $unique_sale_ids]], ['id', 'name']);
+    if ($sale_orders && is_array($sale_orders)) {
+        foreach ($sale_orders as $so) {
+            $so_id = $so['id'] ?? 0;
+            $so_name = $so['name'] ?? '';
+            if ($so_id > 0 && !empty($so_name)) {
+                $sale_id_to_name[$so_id] = $so_name;
+            }
+        }
+    }
+}
+
     // Buat mapping production_code -> picking/so info untuk efisiensi
 $code_to_picking_map = [];
 foreach ($structured_data as $picking_group) {
     $picking_name = $picking_group['picking_name'];
-    // Gunakan client_order_ref dari DB lokal, fallback ke sale_order_name jika ada
-    $so_info = $picking_group['client_order_ref'] ?: $picking_group['sale_order_name'] ?: ($picking_group['sale_id'] ? "SO-{$picking_group['sale_id']}" : '');
+    $sale_id = $picking_group['sale_id'] ?? 0;
+    
+    // Gunakan client_order_ref dari DB lokal, fallback ke nama SO dari Odoo, atau sale_order_name jika ada
+    $so_info = $picking_group['client_order_ref'] ?: 
+               ($sale_id > 0 && isset($sale_id_to_name[$sale_id]) ? $sale_id_to_name[$sale_id] : '') ?: 
+               $picking_group['sale_order_name'] ?: 
+               ($sale_id ? "SO-{$sale_id}" : '');
     
     foreach ($picking_group['products'] as $product) {
         foreach ($product['items'] as $item) {
@@ -252,6 +281,91 @@ foreach ($structured_data as $picking_group) {
             if (empty($grouped_data[$group_key]['product_ref']) && !empty($item['product_ref'])) {
                 $grouped_data[$group_key]['product_ref'] = $item['product_ref'];
             }
+        }
+    }
+}
+
+// Tambahkan production code yang belum ada di Odoo (tidak ada di structured_data)
+// Ambil semua production code dari shipping_manual_stuffing yang belum masuk ke used_codes
+$stmt_missing = $conn->prepare("SELECT DISTINCT sms.production_code
+FROM shipping_manual_stuffing sms
+WHERE sms.id_shipping = ?");
+$stmt_missing->bind_param("i", $shipping_id);
+$stmt_missing->execute();
+$result_missing = $stmt_missing->get_result();
+
+$missing_codes = [];
+while ($row = $result_missing->fetch_assoc()) {
+    $code = $row['production_code'];
+    if (!isset($used_codes[$code])) {
+        $missing_codes[] = $code;
+    }
+}
+$stmt_missing->close();
+
+// Tambahkan missing codes ke grouped_data
+if (!empty($missing_codes)) {
+    foreach ($missing_codes as $production_code) {
+        // Ambil data manual stuffing untuk production code ini
+        $sql_manual_detail = "SELECT 
+            sms.production_code,
+            pls.sale_order_ref AS client_order_ref,
+            COALESCE(bl.product_ref, bi_lot.product_ref) AS product_ref,
+            COALESCE(bl.finishing, bi_lot.finishing) AS finishing,
+            TIME(sms.created_at) AS created_time
+        FROM shipping_manual_stuffing sms
+        LEFT JOIN production_lots_strg pls ON pls.production_code = sms.production_code
+        LEFT JOIN barcode_item bi ON bi.barcode = sms.production_code
+        LEFT JOIN barcode_lot bi_lot ON bi_lot.id = bi.lot_id
+        LEFT JOIN barcode_lot bl ON bl.sale_order_ref = pls.sale_order_ref
+        WHERE sms.id_shipping = ? AND sms.production_code = ?
+        LIMIT 1";
+        
+        $stmt_detail = $conn->prepare($sql_manual_detail);
+        $stmt_detail->bind_param("is", $shipping_id, $production_code);
+        $stmt_detail->execute();
+        $result_detail = $stmt_detail->get_result();
+        $manual_data = $result_detail->fetch_assoc();
+        $stmt_detail->close();
+        
+        // Buat group key untuk produk yang tidak diketahui
+        // Group berdasarkan product_ref jika ada, atau per production_code jika tidak ada
+        $product_ref = $manual_data['product_ref'] ?? null;
+        $product_name = $product_ref ?: 'Unknown Product';
+        $group_key = $product_ref ? "missing_product_" . md5($product_ref) : "missing_" . md5($production_code);
+        
+        if (!isset($grouped_data[$group_key])) {
+            $grouped_data[$group_key] = [
+                'items' => [],
+                'product_id' => 0,
+                'product_name' => $product_name,
+                'product_ref' => $product_ref,
+                'finishing' => $manual_data['finishing'] ?? null,
+                'qty' => 0,
+                'tot_part' => 0
+            ];
+        }
+        
+        $grouped_data[$group_key]['items'][] = [
+            'production_code' => $production_code,
+            'client_order_ref' => $manual_data['client_order_ref'] ?? '',
+            'product_id' => 0,
+            'product_name' => $product_name,
+            'product_ref' => $product_ref,
+            'finishing' => $manual_data['finishing'] ?? null,
+            'created_time' => $manual_data['created_time'] ?? '-'
+        ];
+        
+        $grouped_data[$group_key]['qty']++;
+        $grouped_data[$group_key]['tot_part']++;
+        $used_codes[$production_code] = true;
+        
+        // Update finishing dan product_ref jika belum ada
+        if (empty($grouped_data[$group_key]['finishing']) && !empty($manual_data['finishing'])) {
+            $grouped_data[$group_key]['finishing'] = $manual_data['finishing'];
+        }
+        if (empty($grouped_data[$group_key]['product_ref']) && !empty($product_ref)) {
+            $grouped_data[$group_key]['product_ref'] = $product_ref;
         }
     }
 }
@@ -1133,6 +1247,17 @@ error_log("=== M3 ASSIGN: Selesai assign M3 ===");
                                                 $picking_info = $code_to_picking_map[$item_production_code]['picking_name'];
                                                 $so_info = $code_to_picking_map[$item_production_code]['so_info'];
                                             }
+                                            
+                                            // Tampilkan picking/SO, jika tidak diketahui beri penjelasan
+                                            $display_picking_so = '';
+                                            if (empty($picking_info) || $picking_info === '-') {
+                                                $display_picking_so = 'Picking/SO nya Belum ada di odoo';
+                                            } else {
+                                                $display_picking_so = htmlspecialchars($picking_info);
+                                                if (!empty($so_info) && $so_info !== '-') {
+                                                    $display_picking_so .= '<br><span style="color: #666;">' . htmlspecialchars($so_info) . '</span>';
+                                                }
+                                            }
                                         ?>
                                             <tr>
                                                 <td class="text-center"><?= $detail_no++ ?></td>
@@ -1140,8 +1265,7 @@ error_log("=== M3 ASSIGN: Selesai assign M3 ===");
                                                 <td class="text-center"><?= htmlspecialchars($item_data['created_time'] ?? '-') ?></td>
                                                 <td class="text-left"><?= htmlspecialchars($item_data['client_order_ref'] ?? '-') ?></td>
                                                 <td class="text-left" style="font-size: 8pt;">
-                                                    <div><?= htmlspecialchars($picking_info) ?></div>
-                                                    <div style="color: #666;"><?= htmlspecialchars($so_info) ?></div>
+                                                    <?= $display_picking_so ?>
                                                 </td>
                                             </tr>
                                         <?php endforeach; ?>
