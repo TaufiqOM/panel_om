@@ -113,81 +113,68 @@ foreach ($pickings as $picking) {
         $move_ids = $picking_full[0]['move_ids'];
     }
     
-    // Kumpulkan semua barcodes dari move_line_ids untuk picking ini
-    // DAN ambil product_uom_qty dari stock.move untuk setiap product
-    $all_picking_barcodes = [];
+    // PENTING: Ambil product_uom_qty langsung dari stock.move untuk setiap product di picking ini
+    // Ini lebih akurat karena sesuai dengan picking yang sedang diproses
     $move_product_uom_qty = []; // Simpan product_uom_qty dari stock.move untuk setiap product_id
+    $move_product_data = []; // Simpan data lengkap stock.move untuk setiap product_id (product_id, product_name, product_uom_qty, sale_line_id)
+    
     if (!empty($move_ids)) {
-        $moves = callOdooRead($username, 'stock.move', [['id', 'in', $move_ids]], ['id', 'product_id', 'move_line_ids', 'product_uom_qty']);
+        $moves = callOdooRead($username, 'stock.move', [['id', 'in', $move_ids]], ['id', 'product_id', 'product_uom_qty', 'sale_line_id']);
         
         if ($moves && is_array($moves)) {
             foreach ($moves as $move) {
                 $move_id = $move['id'];
                 $product_id = is_array($move['product_id']) ? $move['product_id'][0] : null;
+                $product_name = is_array($move['product_id']) ? $move['product_id'][1] : 'N/A';
+                $move_qty = floatval($move['product_uom_qty'] ?? 0);
+                $sale_line_id = is_array($move['sale_line_id']) ? $move['sale_line_id'][0] : null;
                 
-                if (!$product_id) {
+                if (!$product_id || $move_qty <= 0) {
                     continue;
                 }
                 
-                // Simpan product_uom_qty dari stock.move
-                // PENTING: Gunakan product_uom_qty dari stock.move (yang sesuai dengan picking ini)
-                // Gunakan yang pertama ditemukan untuk product_id ini
+                // Simpan product_uom_qty dari stock.move untuk product_id ini
+                // PENTING: Akumulasi qty jika ada beberapa stock.move dengan product_id yang sama
                 if (!isset($move_product_uom_qty[$product_id])) {
-                    $move_qty = floatval($move['product_uom_qty'] ?? 0);
-                    if ($move_qty > 0) {
-                        $move_product_uom_qty[$product_id] = intval($move_qty);
-                    }
+                    $move_product_uom_qty[$product_id] = 0;
+                    $move_product_data[$product_id] = [
+                        'product_id' => $product_id,
+                        'product_name' => $product_name,
+                        'product_uom_qty' => 0,
+                        'sale_line_id' => $sale_line_id // Gunakan sale_line_id dari yang pertama
+                    ];
                 }
-                
-                // Ambil move_line_ids untuk move ini
-                $move_line_ids = $move['move_line_ids'] ?? [];
-                if (empty($move_line_ids)) {
-                    $move_full = callOdooRead($username, 'stock.move', [['id', '=', $move_id]], ['move_line_ids']);
-                    if ($move_full && !empty($move_full) && isset($move_full[0]['move_line_ids'])) {
-                        $move_line_ids = $move_full[0]['move_line_ids'];
-                    }
-                }
-                
-                if (!empty($move_line_ids)) {
-                    $move_lines = callOdooRead($username, 'stock.move.line', [['id', 'in', $move_line_ids]], ['lot_id']);
-                    
-                    if ($move_lines && is_array($move_lines)) {
-                        foreach ($move_lines as $line) {
-                            if (isset($line['lot_id']) && is_array($line['lot_id']) && count($line['lot_id']) >= 2) {
-                                $barcode = $line['lot_id'][1]; // lot_id.name
-                                if (!empty($barcode)) {
-                                    if (!isset($all_picking_barcodes[$product_id])) {
-                                        $all_picking_barcodes[$product_id] = [];
-                                    }
-                                    $all_picking_barcodes[$product_id][] = $barcode;
-                                }
-                            }
-                        }
-                    }
-                }
+                // Akumulasi qty untuk product yang sama
+                $move_product_uom_qty[$product_id] += intval($move_qty);
+                $move_product_data[$product_id]['product_uom_qty'] += intval($move_qty);
             }
         }
     }
     
-    // Loop per sale.order.line
-    foreach ($sale_order_lines as $sale_line) {
-        $sale_order_line_id = $sale_line['id'];
-        $product_id = is_array($sale_line['product_id']) ? $sale_line['product_id'][0] : null;
-        $product_name = is_array($sale_line['product_id']) ? $sale_line['product_id'][1] : ($sale_line['name'] ?? 'N/A');
-        $product_uom_qty = intval($sale_line['product_uom_qty'] ?? 0);
-        $info_to_production = $sale_line['info_to_production'] ?? '##';
+    // Loop per stock.move untuk mendapatkan product dan qty langsung dari Odoo
+    foreach ($move_product_data as $product_id => $move_data) {
+        $product_name = $move_data['product_name'];
+        $product_uom_qty = $move_data['product_uom_qty']; // LANGSUNG dari stock.move di Odoo
+        $sale_line_id = $move_data['sale_line_id'];
         
-        if (!$product_id || $product_uom_qty <= 0) {
-            continue;
+        // Ambil info_to_production dari sale.order.line jika ada sale_line_id
+        $info_to_production = '##';
+        if ($sale_line_id) {
+            foreach ($sale_order_lines as $sale_line) {
+                if ($sale_line['id'] == $sale_line_id) {
+                    $info_to_production = $sale_line['info_to_production'] ?? '##';
+                    break;
+                }
+            }
         }
         
         // PENTING: Ambil production_code langsung dari production_lots_strg
         // Filter berdasarkan: customer_name, so_name, sale_order_id, sale_order_ref, product_code, sale_order_line_id
         // Exclude production_code yang sudah ada di shipping_manual_stuffing untuk shipping_id ini
-        // Ambil sebanyak product_uom_qty per sale.order.line
+        // Ambil sebanyak product_uom_qty dari stock.move
         $valid_barcodes = [];
         
-        if ($product_uom_qty > 0) {
+        if ($product_uom_qty > 0 && $sale_line_id) {
             // Escape untuk keamanan
             $escaped_customer_name = $conn->real_escape_string($customer_name);
             $escaped_so_name = $conn->real_escape_string($so_name);
@@ -196,7 +183,7 @@ foreach ($pickings as $picking) {
             // Query production_lots_strg dengan filter lengkap
             // Filter berdasarkan: customer_name, so_name, sale_order_id, sale_order_ref, product_code, sale_order_line_id
             // Exclude production_code yang sudah ada di shipping_manual_stuffing untuk shipping_id ini
-            // Ambil sebanyak product_uom_qty per sale.order.line
+            // Ambil sebanyak product_uom_qty dari stock.move
             $sql_strg = "SELECT pls.production_code 
                          FROM production_lots_strg pls
                          LEFT JOIN shipping_manual_stuffing sms ON sms.production_code = pls.production_code AND sms.id_shipping = ?
@@ -215,7 +202,7 @@ foreach ($pickings as $picking) {
                 // i = integer (shipping_id, sale_id, product_id, sale_order_line_id, product_uom_qty)
                 // s = string (customer_name, so_name, sale_order_ref)
                 // Urutan: shipping_id(i), customer_name(s), so_name(s), sale_id(i), sale_order_ref(s), product_id(i), sale_order_line_id(i), product_uom_qty(i)
-                $stmt_strg->bind_param("issisiii", $shipping_id, $escaped_customer_name, $escaped_so_name, $sale_id, $escaped_client_order_ref, $product_id, $sale_order_line_id, $product_uom_qty);
+                $stmt_strg->bind_param("issisiii", $shipping_id, $escaped_customer_name, $escaped_so_name, $sale_id, $escaped_client_order_ref, $product_id, $sale_line_id, $product_uom_qty);
                 $stmt_strg->execute();
                 $result_strg = $stmt_strg->get_result();
                 
@@ -230,27 +217,18 @@ foreach ($pickings as $picking) {
             }
         }
         
-        // PENTING: Jika tidak ada barcode yang valid di production_lots_strg, skip product ini
-        // Product hanya akan ditampilkan jika ada setidaknya satu barcode yang valid di production_lots_strg
-        if (empty($valid_barcodes)) {
-            continue;
-        }
-        
-        if (empty($valid_barcodes)) {
-            continue;
-        }
-        
-        // Qty yang sebenarnya adalah jumlah barcode yang valid (tidak lebih dari product_uom_qty)
-        $actual_qty = count($valid_barcodes);
+        // PENTING: Jika tidak ada barcode yang valid di production_lots_strg, tetap tampilkan product
+        // tapi dengan barcode kosong (akan ditampilkan sebagai "##" di output)
+        // Jangan skip product ini, biarkan tetap diproses
         
         // Ambil product default_code
         $default_code = '##';
         if (!isset($product_cache[$product_id])) {
-            $product_data = callOdooRead($username, 'product.product', [['id', '=', $product_id]], ['default_code', 'name']);
-            if ($product_data && !empty($product_data)) {
-                $default_code = $product_data[0]['default_code'] ?? '##';
+            $product_data_odoo = callOdooRead($username, 'product.product', [['id', '=', $product_id]], ['default_code', 'name']);
+            if ($product_data_odoo && !empty($product_data_odoo)) {
+                $default_code = $product_data_odoo[0]['default_code'] ?? '##';
                 if (empty($product_name) || $product_name == 'N/A') {
-                    $product_name = $product_data[0]['name'] ?? $product_name;
+                    $product_name = $product_data_odoo[0]['name'] ?? $product_name;
                 }
             }
             $product_cache[$product_id] = [
@@ -267,61 +245,40 @@ foreach ($pickings as $picking) {
             $order_groups[$client_order_ref] = [];
         }
         
-        // Buat key unik untuk product (gabungan product_id untuk menghindari duplikasi nama)
-        // Jika product sudah ada, kita hanya update jika belum ada barcode dari sale.order.line ini
+        // Buat key unik untuk product (hanya product_id, TANPA sale_order_line_id)
+        // PENTING: Product yang sama harus digabungkan dan qty DIakumulasi jika muncul di beberapa picking
         $product_key = $product_id . '_' . $product_name;
         
         // Inisialisasi product jika belum ada
-        // PENTING: product_uom_qty langsung dari stock.move (bukan sale.order.line) untuk akurasi
+        // PENTING: product_uom_qty LANGSUNG dari stock.move di Odoo (bukan dari sale.order.line)
         if (!isset($order_groups[$client_order_ref][$product_key])) {
             $due_date = $sale_order_data['due_date_order'] ?? null;
-            // PENTING: Gunakan product_uom_qty dari stock.move jika ada, jika tidak gunakan dari sale.order.line
-            $final_product_uom_qty = $product_uom_qty; // Default dari sale.order.line
-            if (isset($move_product_uom_qty[$product_id]) && $move_product_uom_qty[$product_id] > 0) {
-                $final_product_uom_qty = $move_product_uom_qty[$product_id]; // Gunakan dari stock.move
-            }
+            // PENTING: SELALU gunakan product_uom_qty dari stock.move di Odoo (lebih akurat untuk picking ini)
             $order_groups[$client_order_ref][$product_key] = [
                 'product_id' => $product_id,
                 'product_name' => $product_name,
-                'qty' => $final_product_uom_qty, // Dari stock.move atau sale.order.line
-                'product_uom_qty' => $final_product_uom_qty, // Dari stock.move atau sale.order.line (untuk output)
+                'qty' => $product_uom_qty, // LANGSUNG dari stock.move di Odoo
+                'product_uom_qty' => $product_uom_qty, // LANGSUNG dari stock.move di Odoo (untuk output)
                 'default_code' => $default_code,
                 'due_date' => $due_date,
-                'barcodes' => [],
+                'barcodes' => $valid_barcodes, // Langsung assign barcodes yang valid
                 'info_to_production' => $info_to_production
             ];
+        } else {
+            // Jika product_key sudah ada (product yang sama dari picking/stock.move lain)
+            // PENTING: Qty DIakumulasi untuk mendapatkan total yang benar
+            $current = $order_groups[$client_order_ref][$product_key];
+            $existing_barcodes = $current['barcodes'];
+            $new_barcodes = array_diff($valid_barcodes, $existing_barcodes);
+            
+            // Update barcodes jika ada yang baru
+            if (!empty($new_barcodes)) {
+                $order_groups[$client_order_ref][$product_key]['barcodes'] = array_merge($existing_barcodes, $new_barcodes);
+            }
+            // PENTING: qty dan product_uom_qty DIakumulasi untuk mendapatkan total yang benar
+            $order_groups[$client_order_ref][$product_key]['qty'] += $product_uom_qty;
+            $order_groups[$client_order_ref][$product_key]['product_uom_qty'] += $product_uom_qty;
         }
-        
-        // Tambahkan quantity dan barcodes
-        // PENTING: valid_barcodes sudah dibatasi sebanyak product_uom_qty oleh LIMIT di query SQL
-        // Qty menggunakan product_uom_qty langsung (bukan jumlah barcode)
-        $current = $order_groups[$client_order_ref][$product_key];
-        
-        // PENTING: Untuk setiap sale.order.line, kita hanya mengambil barcode yang sesuai dengan sale_order_line_id tersebut
-        // Jika product sudah ada dari sale.order.line sebelumnya, kita perlu memutuskan apakah akan menggabungkan atau mengganti
-        // Untuk saat ini, kita akan menggabungkan tapi hanya jika barcode belum ada
-        // Hanya tambahkan barcode yang belum ada (jangan duplikat)
-        $existing_barcodes = $current['barcodes'];
-        $new_barcodes = array_diff($valid_barcodes, $existing_barcodes);
-        
-        // Jika tidak ada barcode baru, skip (sudah ada di sale.order.line sebelumnya)
-        if (empty($new_barcodes)) {
-            continue;
-        }
-        
-        // Update dengan menambahkan barcode baru (tidak mengganti yang sudah ada)
-        // PENTING: Qty TIDAK diakumulasi, langsung gunakan product_uom_qty dari sale.order.line pertama
-        // Jika product sudah ada, tetap gunakan product_uom_qty yang sudah ada (tidak diubah)
-        $order_groups[$client_order_ref][$product_key] = [
-            'product_id' => $current['product_id'],
-            'product_name' => $current['product_name'],
-            'qty' => $current['qty'], // Tetap gunakan qty yang sudah ada (tidak diakumulasi)
-            'product_uom_qty' => $current['product_uom_qty'], // Tetap gunakan product_uom_qty yang sudah ada (tidak diakumulasi)
-            'default_code' => $current['default_code'],
-            'due_date' => $current['due_date'],
-            'barcodes' => array_merge($existing_barcodes, $new_barcodes),
-            'info_to_production' => $current['info_to_production']
-        ];
     }
 }
 
@@ -334,10 +291,7 @@ if (!empty($pickings) && !empty($username)) {
             $sale_order_data = $sale_order_cache[$sale_id];
             if (isset($sale_order_data['partner_id']) && is_array($sale_order_data['partner_id'])) {
                 $buyer_name = $sale_order_data['partner_id'][1] ?? '';
-                // Split by '/' dan ambil bagian pertama seperti di XML
-                if (strpos($buyer_name, '/') !== false) {
-                    $buyer_name = trim(explode('/', $buyer_name)[0]);
-                }
+                // Tampilkan full customer name (tidak split)
                 if (!empty($buyer_name)) {
                     break;
                 }
@@ -346,7 +300,7 @@ if (!empty($pickings) && !empty($username)) {
     }
 }
 
-// Format tanggal
+// Format tanggal (d M Y - contoh: 20 Dec 2025)
 $scheduled_date = $shipping['sheduled_date'] ?? '';
 $formatted_scheduled_date = '';
 if ($scheduled_date) {
@@ -354,6 +308,48 @@ if ($scheduled_date) {
     if ($date_obj) {
         $formatted_scheduled_date = $date_obj->format('d M Y');
     }
+}
+
+// Ambil logo company dari Odoo
+$company_logo = '';
+if (!empty($username)) {
+    $batch_name = $shipping['name'];
+    $batches = callOdooRead($username, 'stock.picking.batch', [['name', '=', $batch_name]], ['company_id']);
+    
+    $company_id = null;
+    if ($batches && is_array($batches) && !empty($batches) && isset($batches[0]['company_id'])) {
+        $company_id_field = $batches[0]['company_id'];
+        if (is_array($company_id_field) && count($company_id_field) >= 1) {
+            $company_id = $company_id_field[0];
+        } else if (!is_array($company_id_field) && $company_id_field) {
+            $company_id = $company_id_field;
+        }
+    }
+    
+    if ($company_id) {
+        $companies = callOdooRead($username, 'res.company', [['id', '=', $company_id]], ['id', 'name', 'logo']);
+    } else {
+        $companies = callOdooRead($username, 'res.company', [['parent_id', '=', false]], ['id', 'name', 'logo']);
+        if (!$companies || empty($companies)) {
+            $companies = callOdooRead($username, 'res.company', [], ['id', 'name', 'logo']);
+        }
+    }
+    
+    if ($companies && is_array($companies) && !empty($companies)) {
+        foreach ($companies as $company) {
+            if (isset($company['logo']) && !empty($company['logo']) && $company['logo'] !== false) {
+                $company_logo = $company['logo'];
+                break;
+            }
+        }
+    }
+}
+
+// Generate QR code dari description menggunakan API eksternal
+$qr_code_url = '';
+if (!empty($shipping['description'])) {
+    $qr_size = '80x80'; // Ukuran lebih kecil
+    $qr_code_url = 'https://api.qrserver.com/v1/create-qr-code/?size=' . $qr_size . '&data=' . urlencode($shipping['description']);
 }
 
 $now = new DateTime('now', new DateTimeZone('Asia/Jakarta'));
@@ -549,14 +545,33 @@ $printed_date = $now->format('l, d M Y H:i:s');
 <body>
     <div class="page">
         <!-- Header -->
-        <div style="margin-bottom: 10px;">
-            <h2>Manual Stuffing Checklist PRE STUFFING</h2>
-            <h5>Customer : <?= htmlspecialchars($buyer_name) ?></h5>
+        <div style="display: flex; justify-content: space-between; margin-bottom: 10px;">
+            <div style="flex: 1;">
+                <h2 style="font-weight: bold; margin-bottom: -3px;">Manual Stuffing Checklist PRE STUFFING</h2>
+                <h5 style="font-weight: bold; margin-bottom: -3px;">Customer : <?= htmlspecialchars($buyer_name) ?></h5>
+            </div>
+            <div style="width: 20%; text-align: right;">
+                <?php if (!empty($company_logo) && $company_logo !== false && $company_logo !== 'False'): 
+                    // Pastikan logo adalah base64 yang valid
+                    $logo_data = $company_logo;
+                    // Hapus prefix data:image jika ada
+                    if (strpos($logo_data, 'data:image') === 0) {
+                        $logo_data = substr($logo_data, strpos($logo_data, ',') + 1);
+                    }
+                ?>
+                    <img src="data:image/png;base64,<?= htmlspecialchars($logo_data) ?>" alt="Company Logo" style="max-height: 120px; object-fit: contain; margin-top: -23px;" onerror="this.style.display='none';">
+                <?php endif; ?>
+            </div>
         </div>
 
         <div style="display: flex; justify-content: space-between; margin-top: -23px;">
             <div style="flex: 1;">
-                <h5><?= htmlspecialchars($shipping['description']) ?>, <?= htmlspecialchars($formatted_scheduled_date) ?></h5>
+                <h5 style="font-weight: bold; margin-bottom: -3px;"><?= htmlspecialchars($shipping['description']) ?>, <?= htmlspecialchars($formatted_scheduled_date) ?></h5>
+                <?php if (!empty($qr_code_url)): ?>
+                    <div style="display: inline-block; border: 2px solid black; border-radius: 5px; padding: 5px; margin-bottom: -3px; margin-top: 5px;">
+                        <img src="<?= htmlspecialchars($qr_code_url) ?>" alt="QR Code" style="max-height: 80px; height: auto; display: block;" onerror="this.parentElement.style.display='none';">
+                    </div>
+                <?php endif; ?>
             </div>
             <div style="font-size: 11px; text-align: right; flex: 1;">
                 <span>Printed on : <?= htmlspecialchars($printed_date) ?> (UTC+7)</span>
@@ -598,20 +613,21 @@ $printed_date = $now->format('l, d M Y H:i:s');
                     <td colspan="7"></td>
                 </tr>
                 <?php 
-                foreach ($order_groups as $client_ref => $products): 
-                    // Cek apakah ada barcode
-                    $has_barcodes = false;
-                    foreach ($products as $product_name => $product_data) {
-                        if (!empty($product_data['barcodes'])) {
-                            $has_barcodes = true;
-                            break;
+                // Hitung total keseluruhan dari semua product
+                $total_all_qty = 0;
+                foreach ($order_groups as $client_ref => $products) {
+                    foreach ($products as $product_key => $product_data) {
+                        $qty_val = 0;
+                        if (isset($product_data['product_uom_qty'])) {
+                            $qty_val = intval($product_data['product_uom_qty']);
+                        } elseif (isset($product_data['qty'])) {
+                            $qty_val = intval($product_data['qty']);
                         }
+                        $total_all_qty += $qty_val;
                     }
-                    
-                    if (!$has_barcodes) {
-                        continue;
-                    }
-                    
+                }
+                
+                foreach ($order_groups as $client_ref => $products): 
                     // Ambil due_date dari product pertama
                     $first_product = reset($products);
                     $due_date_str = '##';
@@ -631,7 +647,7 @@ $printed_date = $now->format('l, d M Y H:i:s');
                     </tr>
                     
                     <?php foreach ($products as $product_key => $product_data): ?>
-                        <?php if (empty($product_data['barcodes'])) continue; ?>
+                        <?php // Product tetap ditampilkan meskipun tidak punya barcode (akan ditampilkan sebagai "##") ?>
                         
                         <?php 
                         // Ambil product_name dari product_data
@@ -677,11 +693,14 @@ $printed_date = $now->format('l, d M Y H:i:s');
                         <!-- Barcode Rows -->
                         <?php 
                         $counter = 1;
-                        // Sort barcodes
-                        sort($product_data['barcodes']);
+                        // Sort barcodes (jika ada)
+                        $barcodes_array = isset($product_data['barcodes']) && is_array($product_data['barcodes']) ? $product_data['barcodes'] : [];
+                        if (!empty($barcodes_array)) {
+                            sort($barcodes_array);
+                        }
                         // PENTING: Qty HARUS menggunakan product_uom_qty dari Odoo (bukan jumlah barcode)
                         // Meskipun ada banyak barcode, qty tetap mengikuti product_uom_qty
-                        $barcodes_array = $product_data['barcodes'];
+                        // Jika tidak ada barcode, akan ditampilkan "##" untuk setiap row
                         $barcodes_count = count($barcodes_array);
                         // Gunakan product_uom_qty langsung dari Odoo (yang sama dengan qty_value di atas)
                         $qty = $qty_value; // Gunakan qty_value yang sudah diambil dari product_uom_qty
@@ -734,7 +753,7 @@ $printed_date = $now->format('l, d M Y H:i:s');
                 <tr class="total-row">
                     <td colspan="4"></td>
                     <td class="total-label">Total All Produk IN:</td>
-                    <td class="total-cell"></td>
+                    <td class="total-cell" style="text-align: center; font-weight: bold;"><?= $total_all_qty ?></td>
                     <td></td>
                 </tr>
             </tbody>
