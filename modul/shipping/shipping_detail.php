@@ -131,13 +131,19 @@ require_once __DIR__ . '/../../inc/config.php';
                                                 <span class="path2"></span>
                                             </i>
                                         </button>
-                                        <button class="btn btn-sm btn-icon btn-light-success btn-print-manual-stuffing ms-2" 
+                                        <button class="btn btn-sm btn-icon btn-light-info btn-detail-manual-stuffing ms-2" 
                                                 data-id="<?= $row['id'] ?>" 
                                                 data-name="<?= htmlspecialchars($row['name']) ?>"
-                                                title="Print Manual Stuffing">
-                                            <i class="ki-duotone ki-file fs-2">
+                                                title="Manual Stuffing Detail">
+                                            <i class="ki-duotone ki-barcode fs-2">
                                                 <span class="path1"></span>
                                                 <span class="path2"></span>
+                                                <span class="path3"></span>
+                                                <span class="path4"></span>
+                                                <span class="path5"></span>
+                                                <span class="path6"></span>
+                                                <span class="path7"></span>
+                                                <span class="path8"></span>
                                             </i>
                                         </button>
                                     </td>
@@ -408,14 +414,39 @@ document.addEventListener('DOMContentLoaded', function() {
             window.open('shipping/print_shipping.php?id=' + encodeURIComponent(shippingId), '_blank');
         });
     });
-
-    // Print Manual Stuffing button
-    const printManualStuffingButtons = document.querySelectorAll(".btn-print-manual-stuffing");
-    printManualStuffingButtons.forEach(btn => {
+    
+    // Manual Stuffing Detail button
+    const detailManualStuffingButtons = document.querySelectorAll(".btn-detail-manual-stuffing");
+    detailManualStuffingButtons.forEach(btn => {
         btn.addEventListener("click", function() {
             const shippingId = this.dataset.id;
-            // Buka window baru untuk print manual stuffing
-            window.open('shipping/print_manual_stuffing.php?id=' + encodeURIComponent(shippingId), '_blank');
+            const shippingName = this.dataset.name;
+            const modalBody = document.querySelector("#shippingDetailModal .modal-body");
+            const modalShippingName = document.getElementById("modalShippingName");
+
+            // Update Judul Modal
+            modalShippingName.textContent = "Manual Stuffing - # " + shippingName;
+
+            modalBody.innerHTML = "<div class='text-center p-5'>Loading...</div>";
+
+            fetch("shipping/get_manual_stuffing_detail.php", {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/x-www-form-urlencoded"
+                    },
+                    body: "id=" + encodeURIComponent(shippingId)
+                })
+                .then(response => response.text())
+                .then(data => {
+                    modalBody.innerHTML = data;
+                })
+                .catch(err => {
+                    modalBody.innerHTML = "<div class='alert alert-danger'>Error load data</div>";
+                    console.error(err);
+                });
+
+            const modal = new bootstrap.Modal(document.getElementById("shippingDetailModal"));
+            modal.show();
         });
     });
 
@@ -1493,15 +1524,112 @@ function showNotification(message, type = 'info') {
         </div>
         <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
     `;
-    
+
     document.body.appendChild(notification);
-    
+
     // Auto remove after 5 seconds
     setTimeout(() => {
         notification.classList.remove('show');
         setTimeout(() => notification.remove(), 300);
     }, 5000);
 }
+
+// Function untuk insert barcode ke Odoo (dipanggil via onclick)
+window.insertBarcodeToOdoo = function(btn) {
+    const shippingId = btn.dataset.shippingId;
+
+    if (!shippingId) {
+        alert('✗ Error: Shipping ID tidak ditemukan');
+        return;
+    }
+
+    if (!confirm('Apakah Anda yakin ingin insert barcode ke Odoo?\n\nProses ini akan:\n1. Reset quantity_done menjadi 0\n2. Hapus move lines yang ada\n3. Insert barcode dari production_lots_strg')) {
+        return;
+    }
+
+    const originalHTML = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Memproses...';
+
+    fetch('shipping/process_manual_stuffing.php', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: 'shipping_id=' + encodeURIComponent(shippingId)
+    })
+    .then(response => {
+        console.log('Response status:', response.status);
+        if (!response.ok) {
+            return response.text().then(text => {
+                console.error('Error response:', text);
+                throw new Error('HTTP error! status: ' + response.status + ', body: ' + text);
+            });
+        }
+        return response.json();
+    })
+    .then(data => {
+        console.log('Response data:', data);
+        btn.disabled = false;
+        btn.innerHTML = originalHTML;
+
+        if (data && data.success) {
+            // Gunakan SweetAlert jika tersedia, jika tidak gunakan alert biasa
+            if (typeof Swal !== 'undefined') {
+                Swal.fire({
+                    icon: 'success',
+                    title: 'Berhasil!',
+                    text: data.message || 'Berhasil memproses barcode ke Odoo',
+                    confirmButtonText: 'OK',
+                    confirmButtonColor: '#50CD89'
+                }).then(() => {
+                    // Reload detail setelah user klik OK
+                    const detailButton = document.querySelector('.btn-detail-manual-stuffing[data-id="' + shippingId + '"]');
+                    if (detailButton) {
+                        detailButton.click();
+                    }
+                });
+            } else {
+                alert('✓ ' + (data.message || 'Berhasil memproses barcode'));
+                // Reload detail
+                const detailButton = document.querySelector('.btn-detail-manual-stuffing[data-id="' + shippingId + '"]');
+                if (detailButton) {
+                    detailButton.click();
+                }
+            }
+        } else {
+            // Gunakan SweetAlert untuk error juga jika tersedia
+            if (typeof Swal !== 'undefined') {
+                Swal.fire({
+                    icon: 'error',
+                    title: 'Error',
+                    text: data.message || 'Terjadi kesalahan saat memproses',
+                    confirmButtonText: 'OK',
+                    confirmButtonColor: '#F1416C'
+                });
+            } else {
+                alert('✗ Error: ' + (data.message || 'Terjadi kesalahan saat memproses'));
+            }
+        }
+    })
+    .catch(error => {
+        console.error('Fetch error:', error);
+        btn.disabled = false;
+        btn.innerHTML = originalHTML;
+        // Gunakan SweetAlert untuk error jika tersedia
+        if (typeof Swal !== 'undefined') {
+            Swal.fire({
+                icon: 'error',
+                title: 'Error',
+                text: error.message || 'Terjadi kesalahan saat memproses',
+                confirmButtonText: 'OK',
+                confirmButtonColor: '#F1416C'
+            });
+        } else {
+            alert('✗ Error: ' + (error.message || 'Terjadi kesalahan saat memproses'));
+        }
+    });
+};
 </script>
 
 <script src="../components/pagination.js"></script>
