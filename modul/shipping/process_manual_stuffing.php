@@ -103,49 +103,38 @@ try {
             continue;
         }
         
-        // Step 1: Reset quantity_done di stock.move menjadi 0
+        // Step 1: Ambil data moves tanpa reset/delete (untuk insert incremental)
         $moves = callOdooRead($username, 'stock.move', [['id', 'in', $move_ids]], ['id', 'product_id', 'product_uom_qty', 'sale_line_id']);
-        
+
         if ($moves && is_array($moves)) {
-            // Reset quantity_done menjadi 0
-            foreach ($moves as $move) {
-                $move_id = $move['id'];
-                $reset_result = callOdooWrite($username, 'stock.move', [$move_id], ['quantity_done' => 0]);
-                if ($reset_result === false) {
-                    error_log("Failed to reset move_id: $move_id");
-                }
-            }
-            
-            // Step 2: Delete existing move lines
-            $move_line_ids_to_delete = [];
-            foreach ($moves as $move) {
-                $move_id = $move['id'];
-                $move_full = callOdooRead($username, 'stock.move', [['id', '=', $move_id]], ['move_line_ids']);
-                if ($move_full && !empty($move_full) && isset($move_full[0]['move_line_ids'])) {
-                    $move_line_ids_to_delete = array_merge($move_line_ids_to_delete, $move_full[0]['move_line_ids']);
-                }
-            }
-            
-            if (!empty($move_line_ids_to_delete)) {
-                // Delete move lines menggunakan unlink method
-                $delete_result = callOdoo($username, 'stock.move.line', 'unlink', [$move_line_ids_to_delete]);
-                if ($delete_result === false) {
-                    error_log("Failed to delete move lines");
-                }
-            }
-            
-            // Step 3: Insert barcode dari production_lots_strg ke stock.move.line
+            // Step 2: Insert barcode dari production_lots_strg ke stock.move.line (hanya yang belum ada di Odoo)
             foreach ($moves as $move) {
                 $move_id = $move['id'];
                 $product_id = is_array($move['product_id']) ? $move['product_id'][0] : null;
                 $product_uom_qty = floatval($move['product_uom_qty'] ?? 0);
                 $sale_line_id = is_array($move['sale_line_id']) ? $move['sale_line_id'][0] : null;
-                
+
                 if (!$product_id || $product_uom_qty <= 0 || !$sale_line_id) {
                     continue;
                 }
-                
-                // Ambil barcode dari production_lots_strg
+
+                // Ambil barcode yang sudah ada di Odoo untuk move ini
+                $existing_move_lines = callOdooRead($username, 'stock.move.line', [['move_id', '=', $move_id]], ['lot_id']);
+                $existing_barcodes = [];
+                if ($existing_move_lines && is_array($existing_move_lines)) {
+                    foreach ($existing_move_lines as $move_line) {
+                        $lot_id = is_array($move_line['lot_id']) ? $move_line['lot_id'][0] : $move_line['lot_id'];
+                        if ($lot_id) {
+                            // Ambil nama lot (barcode) dari Odoo
+                            $lot_info = callOdooRead($username, 'stock.lot', [['id', '=', $lot_id]], ['name']);
+                            if ($lot_info && !empty($lot_info)) {
+                                $existing_barcodes[] = $lot_info[0]['name'];
+                            }
+                        }
+                    }
+                }
+
+                // Ambil semua barcode yang tersedia di production_lots_strg
                 $sql_strg = "SELECT pls.production_code, pls.id
                              FROM production_lots_strg pls
                              LEFT JOIN shipping_manual_stuffing sms ON sms.production_code = pls.production_code AND sms.id_shipping = ?
@@ -153,34 +142,43 @@ try {
                              AND pls.product_code = ?
                              AND pls.sale_order_line_id = ?
                              AND sms.production_code IS NULL
-                             ORDER BY pls.id DESC
-                             LIMIT ?";
-                
+                             ORDER BY pls.id DESC";
+
                 $stmt_strg = $conn->prepare($sql_strg);
                 if (!$stmt_strg) {
                     $errors[] = "Gagal prepare query untuk product_id: $product_id, error: " . $conn->error;
                     continue;
                 }
-                
-                $limit_qty = intval($product_uom_qty);
-                $stmt_strg->bind_param("iiiii", $shipping_id, $sale_id, $product_id, $sale_line_id, $limit_qty);
-                
+
+                $stmt_strg->bind_param("iiii", $shipping_id, $sale_id, $product_id, $sale_line_id);
+
                 if (!$stmt_strg->execute()) {
                     $errors[] = "Gagal execute query untuk product_id: $product_id, error: " . $stmt_strg->error;
                     $stmt_strg->close();
                     continue;
                 }
-                
+
                 $result_strg = $stmt_strg->get_result();
-                
-                $barcodes_to_insert = [];
+
+                $available_barcodes = [];
                 while ($row = $result_strg->fetch_assoc()) {
-                    $barcodes_to_insert[] = $row['production_code'];
+                    $available_barcodes[] = $row['production_code'];
                 }
                 $stmt_strg->close();
-                
+
+                // Filter barcode yang belum ada di Odoo
+                $barcodes_to_insert = array_diff($available_barcodes, $existing_barcodes);
+
+                // Batasi jumlah sesuai qty SO yang belum terpenuhi
+                $remaining_qty = intval($product_uom_qty) - count($existing_barcodes);
+                if ($remaining_qty > 0) {
+                    $barcodes_to_insert = array_slice($barcodes_to_insert, 0, $remaining_qty);
+                } else {
+                    $barcodes_to_insert = []; // Sudah cukup
+                }
+
                 if (empty($barcodes_to_insert)) {
-                    $errors[] = "Tidak ada barcode tersedia untuk product_id: $product_id (Qty SO: $product_uom_qty, Sale Line ID: $sale_line_id)";
+                    error_log("Tidak ada barcode baru yang perlu diinsert untuk product_id: $product_id (existing: " . count($existing_barcodes) . ", SO qty: $product_uom_qty)");
                     continue;
                 }
                 

@@ -228,11 +228,17 @@ foreach ($pickings as $picking) {
         </thead>
         <tbody>
           <?php if (!empty($picking_details)): ?>
-            <?php 
+            <?php
             $row_index = 0;
-            foreach ($picking_details as $picking): 
+            foreach ($picking_details as $picking):
               $total_qty = array_sum(array_column($picking['products'], 'product_uom_qty'));
               $total_shortage = array_sum(array_column($picking['products'], 'shortage'));
+              // Hitung barcode yang siap diinsert (tersedia di storage tapi belum di Odoo)
+              $total_ready_to_insert = 0;
+              foreach ($picking['products'] as $product) {
+                $ready_for_this_product = max(0, min($product['count_strg'] - $product['already_inserted'], $product['product_uom_qty'] - $product['already_inserted']));
+                $total_ready_to_insert += $ready_for_this_product;
+              }
             ?>
               <!-- Main Row -->
               <tr class="picking-row clickable-row" 
@@ -251,15 +257,18 @@ foreach ($pickings as $picking) {
                   <span class="fw-bold"><?= htmlspecialchars($picking['picking_name']) ?></span>
                 </td>
                 <td class="py-2">
-                  <span class="badge badge-light"><?= htmlspecialchars($picking['so_name']) ?></span>
+                  <span class="badge" style="background-color: #e3f2fd; color: #1565c0; border: 1px solid #bbdefb;"><?= htmlspecialchars($picking['so_name']) ?></span>
                 </td>
                 <td class="py-2">
-                  <span class="badge badge-light-primary"><?= htmlspecialchars($picking['client_order_ref']) ?></span>
+                  <span class="badge" style="background-color: #f3e5f5; color: #6a1b9a; border: 1px solid #ce93d8;"><?= htmlspecialchars($picking['client_order_ref']) ?></span>
                 </td>
                 <td class="text-center py-2">
-                  <span class="badge badge-light-success"><?= $total_qty ?></span>
+                  <span class="badge fw-bold" style="background-color: #e8f5e8; color: #2e7d32; border: 1px solid #c8e6c9;"><?= $total_qty ?></span>
+                  <?php if ($total_ready_to_insert > 0): ?>
+                    <span class="badge ms-1" style="background-color: #fff3e0; color: #ef6c00; border: 1px solid #ffcc02;" title="Siap Insert">+<?= $total_ready_to_insert ?></span>
+                  <?php endif; ?>
                   <?php if ($total_shortage > 0): ?>
-                    <span class="badge badge-light-danger ms-1" title="Kekurangan">-<?= $total_shortage ?></span>
+                    <span class="badge ms-1" style="background-color: #ffebee; color: #c62828; border: 1px solid #ffcdd2;" title="Kekurangan">-<?= $total_shortage ?></span>
                   <?php endif; ?>
                 </td>
               </tr>
@@ -270,42 +279,42 @@ foreach ($pickings as $picking) {
                   <div class="p-3" style="background-color: #f8f9fa;">
                     <h6 class="fw-bold mb-2">Detail Produk:</h6>
                     <table class="table table-sm table-bordered mb-0">
-                      <thead class="table-secondary">
+                      <thead style="background-color: #f8f9fa; border-bottom: 2px solid #dee2e6;">
                         <tr class="fs-8">
-                          <th style="width: 200px;">Nama Produk</th>
-                          <th class="text-center" style="width: 80px;">Qty SO</th>
-                          <th class="text-center" style="width: 80px;">Sudah Insert</th>
-                          <th class="text-center" style="width: 80px;">Belum Insert</th>
-                          <th class="text-center" style="width: 80px;">Tersedia</th>
-                          <th class="text-center" style="width: 80px;">Kurang</th>
-                          <th>Sample Production Code</th>
+                          <th style="width: 200px; background-color: #e9ecef; color: #495057; font-weight: 600; border: 1px solid #dee2e6;">Nama Produk</th>
+                          <th class="text-center" style="width: 80px; background-color: #e3f2fd; color: #1565c0; font-weight: 600; border: 1px solid #bbdefb;">Qty SO</th>
+                          <th class="text-center" style="width: 80px; background-color: #e8f5e8; color: #2e7d32; font-weight: 600; border: 1px solid #c8e6c9;">Sudah Insert</th>
+                          <th class="text-center" style="width: 80px; background-color: #fff3e0; color: #ef6c00; font-weight: 600; border: 1px solid #ffcc02;">Belum Insert</th>
+                          <th class="text-center" style="width: 80px; background-color: #f3e5f5; color: #6a1b9a; font-weight: 600; border: 1px solid #ce93d8;">Tersedia</th>
+                          <th class="text-center" style="width: 80px; background-color: #ffebee; color: #c62828; font-weight: 600; border: 1px solid #ffcdd2;">Kurang</th>
+                          <th style="background-color: #e9ecef; color: #495057; font-weight: 600; border: 1px solid #dee2e6;">Sample Production Code</th>
                         </tr>
                       </thead>
                       <tbody>
                         <?php foreach ($picking['products'] as $product): ?>
                           <tr class="fs-8">
-                            <td><?= htmlspecialchars($product['product_name']) ?></td>
-                            <td class="text-center fw-bold"><?= $product['product_uom_qty'] ?></td>
-                            <td class="text-center text-primary fw-bold">
+                            <td style="background-color: #f8f9fa; color: #495057; font-weight: 500; border: 1px solid #dee2e6;"><?= htmlspecialchars($product['product_name']) ?></td>
+                            <td class="text-center fw-bold" style="background-color: #f0f8ff; color: #1565c0; border: 1px solid #bbdefb;"><?= $product['product_uom_qty'] ?></td>
+                            <td class="text-center fw-bold" style="background-color: #f1f8e9; color: #2e7d32; border: 1px solid #c8e6c9;">
                               <?= $product['already_inserted'] ?>
                             </td>
-                            <td class="text-center <?= $product['not_inserted'] > 0 ? 'text-warning fw-bold' : 'text-muted' ?>">
+                            <td class="text-center fw-bold" style="background-color: #fff8e1; color: #ef6c00; border: 1px solid #ffcc02;">
                               <?= $product['not_inserted'] > 0 ? $product['not_inserted'] : '-' ?>
                             </td>
-                            <td class="text-center <?= $product['count_strg'] >= $product['product_uom_qty'] ? 'text-success' : 'text-warning' ?>">
+                            <td class="text-center fw-bold" style="background-color: #f8f5ff; color: #6a1b9a; border: 1px solid #ce93d8;">
                               <?= $product['count_strg'] ?>
                             </td>
-                            <td class="text-center <?= $product['shortage'] > 0 ? 'text-danger fw-bold' : 'text-success' ?>">
+                            <td class="text-center fw-bold" style="background-color: #fff5f5; color: #c62828; border: 1px solid #ffcdd2;">
                               <?= $product['shortage'] > 0 ? '-' . $product['shortage'] : '✓' ?>
                             </td>
-                            <td>
+                            <td style="background-color: #f8f9fa; border: 1px solid #dee2e6;">
                               <?php if (!empty($product['sample_codes'])): ?>
                                 <div class="d-flex flex-wrap gap-1">
                                   <?php foreach ($product['sample_codes'] as $code): ?>
-                                    <span class="badge badge-light-info fs-9"><?= htmlspecialchars($code) ?></span>
+                                    <span class="badge" style="background-color: #e3f2fd; color: #1565c0; border: 1px solid #bbdefb; font-size: 0.7rem;"><?= htmlspecialchars($code) ?></span>
                                   <?php endforeach; ?>
                                   <?php if ($product['count_strg'] > count($product['sample_codes'])): ?>
-                                    <span class="badge badge-light fs-9">... +<?= $product['count_strg'] - count($product['sample_codes']) ?> more</span>
+                                    <span class="badge" style="background-color: #e9ecef; color: #6c757d; border: 1px solid #dee2e6; font-size: 0.7rem;">... +<?= $product['count_strg'] - count($product['sample_codes']) ?> more</span>
                                   <?php endif; ?>
                                 </div>
                               <?php else: ?>
