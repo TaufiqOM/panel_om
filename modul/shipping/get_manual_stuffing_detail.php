@@ -72,31 +72,36 @@ foreach ($pickings as $picking) {
         continue;
     }
     
-    // Ambil moves
-    $moves = callOdooRead($username, 'stock.move', [['id', 'in', $move_ids]], ['id', 'product_id', 'product_uom_qty', 'sale_line_id']);
-    
+    // Ambil moves dengan move_line_ids untuk cek yang sudah terinsert
+    $moves = callOdooRead($username, 'stock.move', [['id', 'in', $move_ids]], ['id', 'product_id', 'product_uom_qty', 'sale_line_id', 'move_line_ids']);
+
     $products = [];
-    
+
     if ($moves && is_array($moves)) {
         foreach ($moves as $move) {
+            $move_id = $move['id'];
             $product_id = is_array($move['product_id']) ? $move['product_id'][0] : null;
             $product_name = is_array($move['product_id']) ? $move['product_id'][1] : 'N/A';
             $product_uom_qty = intval($move['product_uom_qty'] ?? 0);
             $sale_line_id = is_array($move['sale_line_id']) ? $move['sale_line_id'][0] : null;
-            
+            $move_line_ids = $move['move_line_ids'] ?? [];
+
             if (!$product_id || $product_uom_qty <= 0) {
                 continue;
             }
-            
+
+            // Hitung barcode yang sudah terinsert di Odoo (dari move lines)
+            $already_inserted = count($move_line_ids);
+
             // Hitung barcode yang akan di-insert dari production_lots_strg
-            $sql_count_strg = "SELECT COUNT(*) as count 
+            $sql_count_strg = "SELECT COUNT(*) as count
                               FROM production_lots_strg pls
                               LEFT JOIN shipping_manual_stuffing sms ON sms.production_code = pls.production_code AND sms.id_shipping = ?
                               WHERE pls.sale_order_id = ?
                               AND pls.product_code = ?
                               AND pls.sale_order_line_id = ?
                               AND sms.production_code IS NULL";
-            
+
             $stmt_count = $conn->prepare($sql_count_strg);
             $stmt_count->bind_param("iiii", $shipping_id, $sale_id, $product_id, $sale_line_id);
             $stmt_count->execute();
@@ -107,9 +112,15 @@ foreach ($pickings as $picking) {
                 $count_strg = intval($count_data['count']);
             }
             $stmt_count->close();
-            
-            // Ambil sample production_code
-            $sql_sample = "SELECT pls.production_code 
+
+            // Hitung yang belum diinsert (Qty SO - Sudah Insert)
+            $not_inserted = max(0, $product_uom_qty - $already_inserted);
+
+            // Hitung kekurangan total (kurang dari SO qty)
+            $shortage = max(0, $product_uom_qty - $count_strg);
+
+            // Ambil sample production_code yang belum diinsert
+            $sql_sample = "SELECT pls.production_code
                           FROM production_lots_strg pls
                           LEFT JOIN shipping_manual_stuffing sms ON sms.production_code = pls.production_code AND sms.id_shipping = ?
                           WHERE pls.sale_order_id = ?
@@ -118,27 +129,26 @@ foreach ($pickings as $picking) {
                           AND sms.production_code IS NULL
                           ORDER BY pls.id DESC
                           LIMIT ?";
-            
+
             $stmt_sample = $conn->prepare($sql_sample);
             $limit_sample = min($product_uom_qty, 10); // Ambil max 10 untuk sample
             $stmt_sample->bind_param("iiiii", $shipping_id, $sale_id, $product_id, $sale_line_id, $limit_sample);
             $stmt_sample->execute();
             $result_sample = $stmt_sample->get_result();
-            
+
             $sample_codes = [];
             while ($row = $result_sample->fetch_assoc()) {
                 $sample_codes[] = $row['production_code'];
             }
             $stmt_sample->close();
-            
-            // Hitung kekurangan
-            $shortage = max(0, $product_uom_qty - $count_strg);
-            
+
             $products[] = [
                 'product_id' => $product_id,
                 'product_name' => $product_name,
                 'product_uom_qty' => $product_uom_qty,
                 'count_strg' => $count_strg,
+                'already_inserted' => $already_inserted,
+                'not_inserted' => $not_inserted,
                 'shortage' => $shortage,
                 'sample_codes' => $sample_codes,
                 'sale_line_id' => $sale_line_id
@@ -262,8 +272,10 @@ foreach ($pickings as $picking) {
                     <table class="table table-sm table-bordered mb-0">
                       <thead class="table-secondary">
                         <tr class="fs-8">
-                          <th>Nama Produk</th>
+                          <th style="width: 200px;">Nama Produk</th>
                           <th class="text-center" style="width: 80px;">Qty SO</th>
+                          <th class="text-center" style="width: 80px;">Sudah Insert</th>
+                          <th class="text-center" style="width: 80px;">Belum Insert</th>
                           <th class="text-center" style="width: 80px;">Tersedia</th>
                           <th class="text-center" style="width: 80px;">Kurang</th>
                           <th>Sample Production Code</th>
@@ -274,6 +286,12 @@ foreach ($pickings as $picking) {
                           <tr class="fs-8">
                             <td><?= htmlspecialchars($product['product_name']) ?></td>
                             <td class="text-center fw-bold"><?= $product['product_uom_qty'] ?></td>
+                            <td class="text-center text-primary fw-bold">
+                              <?= $product['already_inserted'] ?>
+                            </td>
+                            <td class="text-center <?= $product['not_inserted'] > 0 ? 'text-warning fw-bold' : 'text-muted' ?>">
+                              <?= $product['not_inserted'] > 0 ? $product['not_inserted'] : '-' ?>
+                            </td>
                             <td class="text-center <?= $product['count_strg'] >= $product['product_uom_qty'] ? 'text-success' : 'text-warning' ?>">
                               <?= $product['count_strg'] ?>
                             </td>
@@ -319,12 +337,16 @@ foreach ($pickings as $picking) {
     <!-- Summary -->
     <?php
     $total_all_qty = 0;
+    $total_already_inserted = 0;
+    $total_not_inserted = 0;
     $total_all_available = 0;
     $total_all_shortage = 0;
-    
+
     foreach ($picking_details as $picking) {
         foreach ($picking['products'] as $product) {
             $total_all_qty += $product['product_uom_qty'];
+            $total_already_inserted += $product['already_inserted'];
+            $total_not_inserted += $product['not_inserted'];
             $total_all_available += $product['count_strg'];
             $total_all_shortage += $product['shortage'];
         }
@@ -336,6 +358,10 @@ foreach ($pickings as $picking) {
         <h6 class="mb-1">Ringkasan:</h6>
         <div class="fs-7">
           <span class="badge badge-light-primary">Total Qty SO: <?= $total_all_qty ?></span>
+          <span class="badge badge-light-info ms-2">Sudah Insert: <?= $total_already_inserted ?></span>
+          <?php if ($total_not_inserted > 0): ?>
+            <span class="badge badge-light-warning ms-2">Belum Insert: <?= $total_not_inserted ?></span>
+          <?php endif; ?>
           <span class="badge badge-light-success ms-2">Tersedia: <?= $total_all_available ?></span>
           <?php if ($total_all_shortage > 0): ?>
             <span class="badge badge-light-danger ms-2">Kurang: <?= $total_all_shortage ?></span>
@@ -353,7 +379,7 @@ foreach ($pickings as $picking) {
       </div>
     </div>
     
-    <?php if ($total_all_shortage > 0): ?>
+    <?php if ($total_not_inserted > 0 || $total_all_shortage > 0): ?>
     <div class="alert alert-warning d-flex align-items-center p-2">
       <i class="ki-duotone ki-information fs-2 text-warning me-2">
         <span class="path1"></span>
@@ -361,7 +387,13 @@ foreach ($pickings as $picking) {
         <span class="path3"></span>
       </i>
       <div class="fs-7">
-        <strong>Perhatian:</strong> Ada <?= $total_all_shortage ?> item yang belum tersedia di production_lots_strg.
+        <strong>Perhatian:</strong>
+        <?php if ($total_not_inserted > 0): ?>
+          Ada <?= $total_not_inserted ?> barcode yang tersedia tetapi belum diinsert ke Odoo.
+        <?php endif; ?>
+        <?php if ($total_all_shortage > 0): ?>
+          <?php if ($total_not_inserted > 0) echo ' Dan '; ?>Ada <?= $total_all_shortage ?> item yang belum tersedia di production_lots_strg.
+        <?php endif; ?>
         Proses insert akan tetap berjalan untuk item yang tersedia.
       </div>
     </div>
