@@ -87,7 +87,7 @@ require_once __DIR__ . '/../../inc/config.php';
                             <th>Scheduled Date</th>
                             <th>Description</th>
                             <th>Ship To</th>
-                            <th class="text-end">Aksi</th>
+                            <th class="text-end" style="min-width: 120px; width: 120px;">Aksi</th>
                         </tr>
                     </thead>
 
@@ -121,31 +121,64 @@ require_once __DIR__ . '/../../inc/config.php';
                                     <td class="min-w-200px">
                                         <span class="fw-bold text-primary"><?= htmlspecialchars($row['ship_to']) ?></span>
                                     </td>
-                                    <td class="text-end">
-                                        <button class="btn btn-sm btn-icon btn-light-primary btn-print-shipping" 
-                                                data-id="<?= $row['id'] ?>" 
-                                                data-name="<?= htmlspecialchars($row['name']) ?>"
-                                                title="Print Shipping">
-                                            <i class="ki-duotone ki-printer fs-2">
-                                                <span class="path1"></span>
-                                                <span class="path2"></span>
-                                            </i>
-                                        </button>
-                                        <button class="btn btn-sm btn-icon btn-light-info btn-detail-manual-stuffing ms-2" 
-                                                data-id="<?= $row['id'] ?>" 
-                                                data-name="<?= htmlspecialchars($row['name']) ?>"
-                                                title="Manual Stuffing Detail">
-                                            <i class="ki-duotone ki-barcode fs-2">
-                                                <span class="path1"></span>
-                                                <span class="path2"></span>
-                                                <span class="path3"></span>
-                                                <span class="path4"></span>
-                                                <span class="path5"></span>
-                                                <span class="path6"></span>
-                                                <span class="path7"></span>
-                                                <span class="path8"></span>
-                                            </i>
-                                        </button>
+                                    <td class="text-end" style="white-space: nowrap;">
+                                        <div class="d-flex align-items-center justify-content-end gap-2">
+                                            <div class="btn-group" style="flex-shrink: 0;">
+                                                <button type="button" class="btn btn-sm btn-icon btn-light-primary btn-print-shipping dropdown-toggle" 
+                                                        data-bs-toggle="dropdown" 
+                                                        data-id="<?= $row['id'] ?>" 
+                                                        data-name="<?= htmlspecialchars($row['name']) ?>"
+                                                        aria-expanded="false"
+                                                        title="Print">
+                                                    <i class="ki-duotone ki-printer fs-2">
+                                                        <span class="path1"></span>
+                                                        <span class="path2"></span>
+                                                    </i>
+                                                </button>
+                                                <ul class="dropdown-menu dropdown-menu-end">
+                                                    <li>
+                                                        <a class="dropdown-item btn-print-shipping-product" 
+                                                           href="javascript:void(0);" 
+                                                           data-id="<?= $row['id'] ?>"
+                                                           data-name="<?= htmlspecialchars($row['name']) ?>">
+                                                            <i class="ki-duotone ki-printer fs-4 me-2">
+                                                                <span class="path1"></span>
+                                                                <span class="path2"></span>
+                                                            </i>
+                                                            Cetak Shipping Product
+                                                        </a>
+                                                    </li>
+                                                    <li>
+                                                        <a class="dropdown-item btn-print-manual-stuffing" 
+                                                           href="javascript:void(0);" 
+                                                           data-id="<?= $row['id'] ?>"
+                                                           data-name="<?= htmlspecialchars($row['name']) ?>">
+                                                            <i class="ki-duotone ki-file fs-4 me-2">
+                                                                <span class="path1"></span>
+                                                                <span class="path2"></span>
+                                                            </i>
+                                                            Cetak Manual Stuffing
+                                                        </a>
+                                                    </li>
+                                                </ul>
+                                            </div>
+                                            <button class="btn btn-sm btn-icon btn-light-info btn-detail-manual-stuffing" 
+                                                    style="flex-shrink: 0;"
+                                                    data-id="<?= $row['id'] ?>" 
+                                                    data-name="<?= htmlspecialchars($row['name']) ?>"
+                                                    title="Manual Stuffing Detail">
+                                                <i class="ki-duotone ki-barcode fs-2">
+                                                    <span class="path1"></span>
+                                                    <span class="path2"></span>
+                                                    <span class="path3"></span>
+                                                    <span class="path4"></span>
+                                                    <span class="path5"></span>
+                                                    <span class="path6"></span>
+                                                    <span class="path7"></span>
+                                                    <span class="path8"></span>
+                                                </i>
+                                            </button>
+                                        </div>
                                     </td>
                                 </tr>
                             <?php endwhile; ?>
@@ -405,13 +438,25 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     });
 
-    // Handle print shipping
-    const printButtons = document.querySelectorAll(".btn-print-shipping");
-    printButtons.forEach(btn => {
-        btn.addEventListener("click", function() {
+    // Handle print shipping product
+    const printShippingProductButtons = document.querySelectorAll(".btn-print-shipping-product");
+    printShippingProductButtons.forEach(btn => {
+        btn.addEventListener("click", function(e) {
+            e.preventDefault();
             const shippingId = this.dataset.id;
-            // Buka window baru untuk print
+            // Buka window baru untuk print shipping product
             window.open('shipping/print_shipping.php?id=' + encodeURIComponent(shippingId), '_blank');
+        });
+    });
+
+    // Handle print manual stuffing
+    const printManualStuffingButtons = document.querySelectorAll(".btn-print-manual-stuffing");
+    printManualStuffingButtons.forEach(btn => {
+        btn.addEventListener("click", function(e) {
+            e.preventDefault();
+            const shippingId = this.dataset.id;
+            // Buka window baru untuk print manual stuffing
+            window.open('shipping/print_manual_stuffing.php?id=' + encodeURIComponent(shippingId), '_blank');
         });
     });
     
