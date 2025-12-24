@@ -178,6 +178,16 @@ require_once __DIR__ . '/../../inc/config.php';
                                                     <span class="path8"></span>
                                                 </i>
                                             </button>
+                                            <button class="btn btn-sm btn-icon btn-light-warning btn-compare-manual-stuffing" 
+                                                    style="flex-shrink: 0;"
+                                                    data-id="<?= $row['id'] ?>" 
+                                                    data-name="<?= htmlspecialchars($row['name']) ?>"
+                                                    title="Bandingkan Data Manual Stuffing">
+                                                <i class="ki-duotone ki-arrows-circle fs-2">
+                                                    <span class="path1"></span>
+                                                    <span class="path2"></span>
+                                                </i>
+                                            </button>
                                         </div>
                                     </td>
                                 </tr>
@@ -484,6 +494,52 @@ document.addEventListener('DOMContentLoaded', function() {
                 .then(response => response.text())
                 .then(data => {
                     modalBody.innerHTML = data;
+                })
+                .catch(err => {
+                    modalBody.innerHTML = "<div class='alert alert-danger'>Error load data</div>";
+                    console.error(err);
+                });
+
+            const modal = new bootstrap.Modal(document.getElementById("shippingDetailModal"));
+            modal.show();
+        });
+    });
+    
+    // Compare Manual Stuffing button
+    const compareManualStuffingButtons = document.querySelectorAll(".btn-compare-manual-stuffing");
+    compareManualStuffingButtons.forEach(btn => {
+        btn.addEventListener("click", function() {
+            const shippingId = this.dataset.id;
+            const shippingName = this.dataset.name;
+            const modalBody = document.querySelector("#shippingDetailModal .modal-body");
+            const modalShippingName = document.getElementById("modalShippingName");
+
+            // Update Judul Modal
+            modalShippingName.textContent = "Bandingkan Data Manual Stuffing - # " + shippingName;
+
+            modalBody.innerHTML = "<div class='text-center p-5'>Loading...</div>";
+
+            fetch("shipping/compare_manual_stuffing.php", {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/x-www-form-urlencoded"
+                    },
+                    body: "id=" + encodeURIComponent(shippingId)
+                })
+                .then(response => response.text())
+                .then(data => {
+                    modalBody.innerHTML = data;
+                    
+                    // Eksekusi script yang ada di dalam HTML yang di-inject
+                    const scripts = modalBody.querySelectorAll('script');
+                    scripts.forEach(oldScript => {
+                        const newScript = document.createElement('script');
+                        Array.from(oldScript.attributes).forEach(attr => {
+                            newScript.setAttribute(attr.name, attr.value);
+                        });
+                        newScript.appendChild(document.createTextNode(oldScript.innerHTML));
+                        oldScript.parentNode.replaceChild(newScript, oldScript);
+                    });
                 })
                 .catch(err => {
                     modalBody.innerHTML = "<div class='alert alert-danger'>Error load data</div>";
