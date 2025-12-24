@@ -156,19 +156,78 @@ foreach ($pickings as $picking) {
                     }
                 }
                 
-                // PENTING: Ambil production_code langsung dari production_lots_strg
-                // Filter berdasarkan: customer_name, so_name, sale_order_id, sale_order_ref, product_code, sale_order_line_id
-                // Exclude production_code yang sudah ada di shipping_manual_stuffing untuk shipping_id ini
-                // Ambil sebanyak product_uom_qty dari stock.move
-                $valid_barcodes = [];
+                // LOGIKA BARU: Ambil barcode dengan prioritas:
+                // 1. Ambil dari Odoo dulu (stock.move.line dengan lot_name)
+                // 2. Jika kurang, ambil dari production_lots_strg yang tidak sama dengan yang di Odoo
+                // 3. Jika di strg tidak ada, ambil dari barcode_item
+                // 4. Beri keterangan posisi dari production_lots_history
+                $valid_barcodes = []; // Array of ['barcode' => string, 'position' => string]
+                $needed_qty = intval($product_uom_qty);
                 
-                if ($product_uom_qty > 0 && $sale_line_id) {
+                if ($needed_qty > 0 && $sale_line_id) {
                     // Escape untuk keamanan
                     $escaped_customer_name = $conn->real_escape_string($customer_name);
                     $escaped_so_name = $conn->real_escape_string($so_name);
                     $escaped_client_order_ref = $conn->real_escape_string($client_order_ref);
                     
-                    // Query production_lots_strg dengan filter lengkap
+                    // STEP 1: Ambil barcode dari Odoo (stock.move.line dengan lot_name untuk move_id ini)
+                    $odoo_barcodes = [];
+                    $move_lines = callOdooRead($username, 'stock.move.line', [['move_id', '=', $move_id]], ['lot_id', 'lot_name']);
+                    
+                    if ($move_lines && is_array($move_lines)) {
+                        foreach ($move_lines as $line) {
+                            $lot_name = null;
+                            
+                            // Try to get lot_name from lot_id field
+                            if (isset($line['lot_id']) && is_array($line['lot_id']) && count($line['lot_id']) >= 2) {
+                                $lot_name = $line['lot_id'][1];
+                            }
+                            // Fallback: try lot_name field
+                            else if (isset($line['lot_name']) && !empty($line['lot_name'])) {
+                                $lot_name = $line['lot_name'];
+                            }
+                            
+                            if ($lot_name && !empty($lot_name)) {
+                                $odoo_barcodes[] = $lot_name;
+                            }
+                        }
+                    }
+                    
+                    // Ambil posisi untuk barcode dari Odoo
+                    foreach ($odoo_barcodes as $barcode) {
+                        // Ambil posisi terakhir dari production_lots_history
+                        $sql_pos = "SELECT plh.station_code, s.station_name 
+                                   FROM production_lots_history plh
+                                   LEFT JOIN stations s ON s.station_code = plh.station_code
+                                   WHERE plh.production_code = ?
+                                   ORDER BY plh.scan_in DESC, plh.id DESC
+                                   LIMIT 1";
+                        $stmt_pos = $conn->prepare($sql_pos);
+                        $position = '';
+                        if ($stmt_pos) {
+                            $stmt_pos->bind_param("s", $barcode);
+                            $stmt_pos->execute();
+                            $result_pos = $stmt_pos->get_result();
+                            if ($row_pos = $result_pos->fetch_assoc()) {
+                                $position = $row_pos['station_name'] ?? $row_pos['station_code'] ?? '';
+                            }
+                            $stmt_pos->close();
+                        }
+                        
+                        $valid_barcodes[] = [
+                            'barcode' => $barcode,
+                            'position' => $position
+                        ];
+                    }
+                    
+                    // STEP 2: Jika masih kurang, ambil dari production_lots_strg yang tidak sama dengan yang di Odoo
+                    $current_count = count($valid_barcodes);
+                    if ($current_count < $needed_qty) {
+                        $still_needed = $needed_qty - $current_count;
+                        $odoo_barcode_list = array_column($valid_barcodes, 'barcode');
+                        $odoo_barcode_placeholders = str_repeat('?,', count($odoo_barcode_list));
+                        $odoo_barcode_placeholders = rtrim($odoo_barcode_placeholders, ',');
+                        
                     $sql_strg = "SELECT pls.production_code 
                                  FROM production_lots_strg pls
                                  LEFT JOIN shipping_manual_stuffing sms ON sms.production_code = pls.production_code AND sms.id_shipping = ?
@@ -178,24 +237,138 @@ foreach ($pickings as $picking) {
                                  AND pls.sale_order_ref = ?
                                  AND pls.product_code = ?
                                  AND pls.sale_order_line_id = ?
-                                 AND sms.production_code IS NULL
-                                 ORDER BY pls.id DESC
-                                 LIMIT ?";
+                                     AND sms.production_code IS NULL";
+                        
+                        // Exclude barcode yang sudah ada di Odoo
+                        if (!empty($odoo_barcode_list)) {
+                            $sql_strg .= " AND pls.production_code NOT IN ($odoo_barcode_placeholders)";
+                        }
+                        
+                        $sql_strg .= " ORDER BY pls.id DESC LIMIT ?";
                     
                     $stmt_strg = $conn->prepare($sql_strg);
                     if ($stmt_strg) {
-                        $limit_qty = intval($product_uom_qty);
-                        $stmt_strg->bind_param("issisiii", $shipping_id, $escaped_customer_name, $escaped_so_name, $sale_id, $escaped_client_order_ref, $product_id, $sale_line_id, $limit_qty);
+                            $params = [$shipping_id, $escaped_customer_name, $escaped_so_name, $sale_id, $escaped_client_order_ref, $product_id, $sale_line_id];
+                            if (!empty($odoo_barcode_list)) {
+                                $params = array_merge($params, $odoo_barcode_list);
+                            }
+                            $params[] = $still_needed;
+                            
+                            $types = "issisii" . str_repeat("s", count($odoo_barcode_list)) . "i";
+                            $stmt_strg->bind_param($types, ...$params);
                         $stmt_strg->execute();
                         $result_strg = $stmt_strg->get_result();
                         
+                            $strg_barcodes = [];
                         while ($row = $result_strg->fetch_assoc()) {
-                            $valid_barcodes[] = $row['production_code'];
+                                $strg_barcodes[] = $row['production_code'];
                         }
                         $stmt_strg->close();
                         
-                        // Balik urutan karena kita menggunakan ORDER BY id DESC untuk mengambil terakhir
-                        $valid_barcodes = array_reverse($valid_barcodes);
+                            // Balik urutan karena kita menggunakan ORDER BY id DESC
+                            $strg_barcodes = array_reverse($strg_barcodes);
+                            
+                            // Ambil posisi untuk barcode dari strg
+                            foreach ($strg_barcodes as $barcode) {
+                                // Ambil posisi terakhir dari production_lots_history
+                                $sql_pos = "SELECT plh.station_code, s.station_name 
+                                           FROM production_lots_history plh
+                                           LEFT JOIN stations s ON s.station_code = plh.station_code
+                                           WHERE plh.production_code = ?
+                                           ORDER BY plh.scan_in DESC, plh.id DESC
+                                           LIMIT 1";
+                                $stmt_pos = $conn->prepare($sql_pos);
+                                $position = '';
+                                if ($stmt_pos) {
+                                    $stmt_pos->bind_param("s", $barcode);
+                                    $stmt_pos->execute();
+                                    $result_pos = $stmt_pos->get_result();
+                                    if ($row_pos = $result_pos->fetch_assoc()) {
+                                        $position = $row_pos['station_name'] ?? $row_pos['station_code'] ?? '';
+                                    }
+                                    $stmt_pos->close();
+                                }
+                                
+                                $valid_barcodes[] = [
+                                    'barcode' => $barcode,
+                                    'position' => $position
+                                ];
+                            }
+                        }
+                    }
+                    
+                    // STEP 3: Jika masih kurang, ambil dari barcode_item
+                    $current_count = count($valid_barcodes);
+                    if ($current_count < $needed_qty) {
+                        $still_needed = $needed_qty - $current_count;
+                        $existing_barcodes = array_column($valid_barcodes, 'barcode');
+                        $existing_placeholders = str_repeat('?,', count($existing_barcodes));
+                        $existing_placeholders = rtrim($existing_placeholders, ',');
+                        
+                        $sql_bi = "SELECT bi.barcode 
+                                  FROM barcode_item bi
+                                  LEFT JOIN shipping_manual_stuffing sms ON sms.production_code = bi.barcode AND sms.id_shipping = ?
+                                  WHERE bi.sale_order_id = ?
+                                  AND bi.sale_order_line_id = ?
+                                  AND bi.product_id = ?
+                                  AND sms.production_code IS NULL";
+                        
+                        // Exclude barcode yang sudah ada
+                        if (!empty($existing_barcodes)) {
+                            $sql_bi .= " AND bi.barcode NOT IN ($existing_placeholders)";
+                        }
+                        
+                        $sql_bi .= " ORDER BY bi.id DESC LIMIT ?";
+                        
+                        $stmt_bi = $conn->prepare($sql_bi);
+                        if ($stmt_bi) {
+                            $params = [$shipping_id, $sale_id, $sale_line_id, $product_id];
+                            if (!empty($existing_barcodes)) {
+                                $params = array_merge($params, $existing_barcodes);
+                            }
+                            $params[] = $still_needed;
+                            
+                            $types = "iiii" . str_repeat("s", count($existing_barcodes)) . "i";
+                            $stmt_bi->bind_param($types, ...$params);
+                            $stmt_bi->execute();
+                            $result_bi = $stmt_bi->get_result();
+                            
+                            $bi_barcodes = [];
+                            while ($row = $result_bi->fetch_assoc()) {
+                                $bi_barcodes[] = $row['barcode'];
+                            }
+                            $stmt_bi->close();
+                            
+                            // Balik urutan
+                            $bi_barcodes = array_reverse($bi_barcodes);
+                            
+                            // Ambil posisi untuk barcode dari barcode_item
+                            foreach ($bi_barcodes as $barcode) {
+                                // Ambil posisi terakhir dari production_lots_history
+                                $sql_pos = "SELECT plh.station_code, s.station_name 
+                                           FROM production_lots_history plh
+                                           LEFT JOIN stations s ON s.station_code = plh.station_code
+                                           WHERE plh.production_code = ?
+                                           ORDER BY plh.scan_in DESC, plh.id DESC
+                                           LIMIT 1";
+                                $stmt_pos = $conn->prepare($sql_pos);
+                                $position = '';
+                                if ($stmt_pos) {
+                                    $stmt_pos->bind_param("s", $barcode);
+                                    $stmt_pos->execute();
+                                    $result_pos = $stmt_pos->get_result();
+                                    if ($row_pos = $result_pos->fetch_assoc()) {
+                                        $position = $row_pos['station_name'] ?? $row_pos['station_code'] ?? '';
+                                    }
+                                    $stmt_pos->close();
+                                }
+                                
+                                $valid_barcodes[] = [
+                                    'barcode' => $barcode,
+                                    'position' => $position
+                                ];
+                            }
+                        }
                     }
                 }
                 
@@ -301,7 +474,7 @@ if (!empty($username)) {
 // Generate QR code dari description menggunakan API eksternal
 $qr_code_url = '';
 if (!empty($shipping['description'])) {
-    $qr_size = '80x80'; // Ukuran lebih kecil
+    $qr_size = '60x60'; // Ukuran lebih kecil
     $qr_code_url = 'https://api.qrserver.com/v1/create-qr-code/?size=' . $qr_size . '&data=' . urlencode($shipping['description']);
 }
 
@@ -318,7 +491,7 @@ $printed_date = $now->format('l, d M Y H:i:s');
     <style>
         @page {
             size: A4 portrait;
-            margin: 15mm;
+            margin: 10mm;
         }
 
         * {
@@ -335,7 +508,14 @@ $printed_date = $now->format('l, d M Y H:i:s');
             background: #fff;
             width: 210mm;
             margin: 0 auto;
-            padding: 15mm;
+            padding: 10mm;
+        }
+        
+        @media print {
+            body {
+                padding: 0;
+                width: 100%;
+            }
         }
 
         .page {
@@ -522,19 +702,16 @@ $printed_date = $now->format('l, d M Y H:i:s');
 </head>
 <body>
     <div class="page">
-        <!-- Tombol Proses (no-print) -->
-        <div class="no-print" style="text-align: center; margin-bottom: 20px;">
-            <button class="btn-process" onclick="processManualStuffing()">Insert Barcode ke Odoo</button>
-            <div id="process-message" style="margin-top: 10px; font-weight: bold;"></div>
-        </div>
-        
         <!-- Header -->
-        <div style="display: flex; justify-content: space-between; margin-bottom: 10px;">
-            <div style="flex: 1;">
+        <div class="row">
+            <div class="col-10">
                 <h2 style="font-weight: bold; margin-bottom: -3px;">Manual Stuffing Checklist PRE STUFFING</h2>
-                <h5 style="font-weight: bold; margin-bottom: -3px;">Customer : <?= htmlspecialchars($buyer_name) ?></h5>
+                <h5 style="font-weight: bold; margin-bottom: -3px;">
+                    Customer :
+                    <span><?= htmlspecialchars($buyer_name) ?></span>
+                </h5>
             </div>
-            <div style="width: 20%; text-align: right;">
+            <div class="col-2" style="text-align: right">
                 <?php if (!empty($company_logo) && $company_logo !== false && $company_logo !== 'False'): 
                     // Pastikan logo adalah base64 yang valid
                     $logo_data = $company_logo;
@@ -543,32 +720,40 @@ $printed_date = $now->format('l, d M Y H:i:s');
                         $logo_data = substr($logo_data, strpos($logo_data, ',') + 1);
                     }
                 ?>
-                    <img src="data:image/png;base64,<?= htmlspecialchars($logo_data) ?>" alt="Company Logo" style="max-height: 120px; object-fit: contain; margin-top: -23px;" onerror="this.style.display='none';">
+                    <img src="data:image/png;base64,<?= htmlspecialchars($logo_data) ?>" alt="Company Logo" style="max-height: 120px; object-fit: contain; margin-top: -23px" onerror="this.style.display='none';">
                 <?php endif; ?>
             </div>
         </div>
-
-        <div style="display: flex; justify-content: space-between; margin-top: -23px;">
-            <div style="flex: 1;">
-                <h5 style="font-weight: bold; margin-bottom: -3px;"><?= htmlspecialchars($shipping['description']) ?>, <?= htmlspecialchars($formatted_scheduled_date) ?></h5>
-                <?php if (!empty($qr_code_url)): ?>
-                    <div style="display: inline-block; border: 2px solid black; border-radius: 5px; padding: 5px; margin-bottom: -3px; margin-top: 5px;">
-                        <img src="<?= htmlspecialchars($qr_code_url) ?>" alt="QR Code" style="max-height: 80px; height: auto; display: block;" onerror="this.parentElement.style.display='none';">
+        <div class="row" style="margin-top: -23px">
+            <div class="col-8">
+                <h5 style="font-weight: bold; margin-bottom: -3px;">
+                    <?= htmlspecialchars($shipping['description']) ?>,
+                    <?= htmlspecialchars($formatted_scheduled_date) ?>
+                </h5>
+                <div style="display: flex; align-items: flex-start; gap: 10px; margin-top: 5px; justify-content: space-between;">
+                    <?php if (!empty($qr_code_url)): ?>
+                        <div style="display: inline-block; border: 2px solid black; border-radius: 5px; padding: 8px; flex-shrink: 0;">
+                            <img src="<?= htmlspecialchars($qr_code_url) ?>" alt="QR Code" style="max-height: 60px; height: auto; display: block;" onerror="this.style.display='none';">
+                        </div>
+                    <?php else: ?>
+                        <div></div>
+                    <?php endif; ?>
+                    <div style="font-size: 11px; width: auto; min-width: 200px;">
+                        <div style="margin-bottom: 5px;">
+                            <span>Printed on : <?= htmlspecialchars($printed_date) ?> (UTC+7)</span>
+                        </div>
+                        <table class="table table-borderless" style="font-size: 16px; font-weight: bold; width: auto; margin-top: 5px;">
+                            <tr>
+                                <td style="text-align: left; border: none; padding: 0; white-space: nowrap;">Start</td>
+                                <td style="border-bottom: 1px solid black; text-align: left; border-top: none; border-left: none; border-right: none; padding: 0 0 0 5px; width: 200px;">:</td>
+                            </tr>
+                            <tr>
+                                <td style="text-align: left; border: none; padding: 20px 0 0 0; white-space: nowrap;">Finish</td>
+                                <td style="border-bottom: 1px solid black; text-align: left; border-top: none; border-left: none; border-right: none; padding: 20px 0 0 5px; width: 200px;">:</td>
+                            </tr>
+                        </table>
                     </div>
-                <?php endif; ?>
-            </div>
-            <div style="font-size: 11px; text-align: right; flex: 1;">
-                <span>Printed on : <?= htmlspecialchars($printed_date) ?> (UTC+7)</span>
-                <table style="font-size: 16px; font-weight: bold; width: 100%; margin-top: 5px; border: none;">
-                    <tr>
-                        <td style="width: 20%; text-align: left; border: none; padding: 0;">Start</td>
-                        <td style="width: 80%; border-bottom: 1px solid black; text-align: left; border-top: none; border-left: none; border-right: none; padding: 0;">:</td>
-                    </tr>
-                    <tr>
-                        <td style="width: 20%; text-align: left; border: none; padding: 0;">Finish</td>
-                        <td style="width: 80%; border-bottom: 1px solid black; text-align: left; border-top: none; border-left: none; border-right: none; padding: 0;">:</td>
-                    </tr>
-                </table>
+                </div>
             </div>
         </div>
 
@@ -676,7 +861,7 @@ $printed_date = $now->format('l, d M Y H:i:s');
                         <tr class="barcode-header">
                             <td>No</td>
                             <td style="text-align: center">Keterangan</td>
-                            <td colspan="2" style="text-align: center"></td>
+                            <td colspan="2" style="text-align: center">Posisi</td>
                             <td style="text-align: center">Nomor Barcode</td>
                             <td style="text-align: center">IN</td>
                             <td style="text-align: center">OUT</td>
@@ -685,11 +870,18 @@ $printed_date = $now->format('l, d M Y H:i:s');
                         <!-- Barcode Rows -->
                         <?php 
                         $counter = 1;
-                        // Sort barcodes (jika ada)
+                        // Barcodes sekarang adalah array of ['barcode' => string, 'position' => string]
                         $barcodes_array = isset($product_data['barcodes']) && is_array($product_data['barcodes']) ? $product_data['barcodes'] : [];
+                        
+                        // Sort barcodes berdasarkan barcode (jika ada)
                         if (!empty($barcodes_array)) {
-                            sort($barcodes_array);
+                            usort($barcodes_array, function($a, $b) {
+                                $barcode_a = is_array($a) ? ($a['barcode'] ?? '') : $a;
+                                $barcode_b = is_array($b) ? ($b['barcode'] ?? '') : $b;
+                                return strcmp($barcode_a, $barcode_b);
+                            });
                         }
+                        
                         // PENTING: Qty HARUS menggunakan product_uom_qty dari Odoo (bukan jumlah barcode)
                         // Meskipun ada banyak barcode, qty tetap mengikuti product_uom_qty
                         // Jika tidak ada barcode, akan ditampilkan "##" untuk setiap row
@@ -698,12 +890,19 @@ $printed_date = $now->format('l, d M Y H:i:s');
                         $qty = $qty_value; // Gunakan qty_value yang sudah diambil dari product_uom_qty
                         for ($i = 0; $i < $qty; $i++): 
                             // Show barcode[i] if it exists, otherwise '##' (matching XML logic)
-                            $barcode = ($i < $barcodes_count) ? $barcodes_array[$i] : '##';
+                            if ($i < $barcodes_count) {
+                                $barcode_data = $barcodes_array[$i];
+                                $barcode = is_array($barcode_data) ? ($barcode_data['barcode'] ?? '##') : $barcode_data;
+                                $position = is_array($barcode_data) ? ($barcode_data['position'] ?? '') : '';
+                            } else {
+                                $barcode = '##';
+                                $position = '';
+                            }
                         ?>
                             <tr class="barcode-row">
                                 <td><?= $counter ?></td>
                                 <td style="border-bottom: 1px solid black; text-align: center"></td>
-                                <td colspan="2" style="text-align: center"></td>
+                                <td colspan="2" style="text-align: center"><?= htmlspecialchars($position) ?></td>
                                 <td class="barcode-cell"><?= htmlspecialchars($barcode) ?></td>
                                 <td style="text-align: center;">
                                     <div class="checkbox"></div>
@@ -733,13 +932,7 @@ $printed_date = $now->format('l, d M Y H:i:s');
                         </tr>
                     <?php endforeach; ?>
                 <?php endforeach; ?>
-                
-                <tr>
-                    <td colspan="7" class="spacer border-bottom-thick"></td>
-                </tr>
-                <tr>
-                    <td colspan="7" class="spacer"></td>
-                </tr>
+
                 
                 <!-- Total All Produk IN -->
                 <tr class="total-row">
@@ -809,75 +1002,25 @@ $printed_date = $now->format('l, d M Y H:i:s');
         </table>
 
         <!-- Approval Section -->
-        <table class="approval-table">
+        <table style="width: 100%; margin-top: 40px;" class="table table-borderless">
             <tr>
-                <td class="approval-cell">
+                <td style="text-align: center; width: 33.33%; padding: 10px;">
                     <p>Approved By</p>
-                    <div class="approval-line"></div>
+                    <div style="height: 60px; border-bottom: 1px solid black; margin-top: 20px;"></div>
                     <p>Opr. Manual</p>
                 </td>
-                <td class="approval-cell">
+                <td style="text-align: center; width: 33.33%; padding: 10px;">
                     <p>Approved By</p>
-                    <div class="approval-line"></div>
+                    <div style="height: 60px; border-bottom: 1px solid black; margin-top: 20px;"></div>
                     <p>Opr. Scan</p>
                 </td>
-                <td class="approval-cell">
+                <td style="text-align: center; width: 33.33%; padding: 10px;">
                     <p>Approved By</p>
-                    <div class="approval-line"></div>
+                    <div style="height: 60px; border-bottom: 1px solid black; margin-top: 20px;"></div>
                     <p>Opr. Final Check</p>
                 </td>
             </tr>
         </table>
     </div>
-    
-    <script>
-    function processManualStuffing() {
-        const btn = document.querySelector('.btn-process');
-        const messageDiv = document.getElementById('process-message');
-        
-        if (!confirm('Apakah Anda yakin ingin insert barcode ke Odoo? Proses ini akan:\n1. Reset quantity_done menjadi 0\n2. Insert barcode sesuai production_lots_strg')) {
-            return;
-        }
-        
-        btn.disabled = true;
-        btn.textContent = 'Processing...';
-        messageDiv.textContent = 'Sedang memproses...';
-        messageDiv.style.color = 'blue';
-        
-        const shipping_id = <?= $shipping_id ?>;
-        
-        fetch('process_manual_stuffing.php', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/x-www-form-urlencoded',
-            },
-            body: 'shipping_id=' + shipping_id
-        })
-        .then(response => response.json())
-        .then(data => {
-            btn.disabled = false;
-            btn.textContent = 'Insert Barcode ke Odoo';
-            
-            if (data.success) {
-                messageDiv.textContent = data.message;
-                messageDiv.style.color = 'green';
-                
-                // Reload halaman setelah 2 detik
-                setTimeout(() => {
-                    location.reload();
-                }, 2000);
-            } else {
-                messageDiv.textContent = 'Error: ' + data.message;
-                messageDiv.style.color = 'red';
-            }
-        })
-        .catch(error => {
-            btn.disabled = false;
-            btn.textContent = 'Insert Barcode ke Odoo';
-            messageDiv.textContent = 'Error: ' + error.message;
-            messageDiv.style.color = 'red';
-        });
-    }
-    </script>
 </body>
 </html>
