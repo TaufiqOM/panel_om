@@ -1,5 +1,7 @@
 <?php
+session_start();
 require_once __DIR__ . '/../../inc/config.php';
+require_once __DIR__ . '/../../inc/config_odoo.php';
 ?>
 
 <div class="row g-5 g-xxl-10">
@@ -7,7 +9,7 @@ require_once __DIR__ . '/../../inc/config.php';
     <div class="col-xl-12 mb-5 mb-xxl-10">
 
         <!--begin::Table Widget 3-->
-        <div class="card card-flush h-xl-100">
+                <div class="card card-flush h-xl-100">
             <!--begin::Card header-->
             <div class="card-header py-7">
                 <!--begin::Tabs-->
@@ -26,6 +28,16 @@ require_once __DIR__ . '/../../inc/config.php';
                 <div class="card-toolbar">
                     <!--begin::Filter & Search-->
                     <div class="card-toolbar d-flex align-items-center gap-3">
+
+                        <!--begin::State Filter-->
+                        <div class="position-relative">
+                            <select id="stateFilter" class="form-select form-select-sm form-select-solid" style="min-width: 180px;">
+                                <option value="draft_in_progress" selected>Draft & In Progress</option>
+                                <option value="done">Done</option>
+                                <option value="all">All</option>
+                            </select>
+                        </div>
+                        <!--end::State Filter-->
 
                         <!--begin::Search-->
                         <div class="position-relative">
@@ -87,39 +99,182 @@ require_once __DIR__ . '/../../inc/config.php';
                             <th>Scheduled Date</th>
                             <th>Description</th>
                             <th>Ship To</th>
+                            <th>State</th>
                             <th class="text-end" style="min-width: 120px; width: 120px;">Aksi</th>
                         </tr>
                     </thead>
 
                     <tbody>
                         <?php
-                        // Query untuk mengambil data shipping
-                        $sql = "SELECT id, name, sheduled_date, description, ship_to FROM shipping ORDER BY id";
+                        // Get state filter from GET parameter, default to 'draft_in_progress'
+                        $stateFilter = isset($_GET['state']) ? $_GET['state'] : 'draft_in_progress';
+                        
+                        // Get username from session
+                        $username = $_SESSION['username'] ?? '';
+                        
+                        // Query untuk mengambil semua data shipping
+                        $sql = "SELECT id, name, sheduled_date, description, ship_to FROM shipping ORDER BY sheduled_date DESC";
                         $result = mysqli_query($conn, $sql);
-
-                        if ($result && mysqli_num_rows($result) > 0):
-                            $no = 1;
+                        
+                        // Check for query errors
+                        if (!$result) {
+                            echo '<tr><td colspan="7" class="text-center text-danger">Error: ' . mysqli_error($conn) . '</td></tr>';
+                        } else {
+                            // Get all shipping IDs
+                            $shippingIds = [];
+                            $shippingData = [];
+                            while ($row = mysqli_fetch_assoc($result)) {
+                                $shippingIds[] = $row['id'];
+                                $shippingData[$row['id']] = $row;
+                            }
+                            
+                            // Get state from Odoo for all shipping batches
+                            $statesFromOdoo = [];
+                            if (!empty($shippingIds) && !empty($username)) {
+                                try {
+                                    $batches = callOdooRead($username, 'stock.picking.batch', [['id', 'in', $shippingIds]], ['id', 'state']);
+                                    if ($batches && is_array($batches)) {
+                                        foreach ($batches as $batch) {
+                                            if (isset($batch['id']) && isset($batch['state'])) {
+                                                $statesFromOdoo[$batch['id']] = $batch['state'];
+                                            }
+                                        }
+                                    }
+                                } catch (Exception $e) {
+                                    error_log("Error fetching state from Odoo: " . $e->getMessage());
+                                }
+                            }
+                            
+                            // Filter data based on state filter
+                            $filteredData = [];
+                            foreach ($shippingData as $id => $row) {
+                                $state = $statesFromOdoo[$id] ?? 'draft';
+                                
+                                // Apply filter
+                                if ($stateFilter === 'all') {
+                                    // Show all data
+                                    $filteredData[$id] = array_merge($row, ['state' => $state]);
+                                } elseif ($stateFilter === 'draft_in_progress') {
+                                    // Show draft or in_progress
+                                    if ($state === 'draft' || $state === 'in_progress') {
+                                        $filteredData[$id] = array_merge($row, ['state' => $state]);
+                                    }
+                                } elseif ($stateFilter === 'done') {
+                                    // Show only done
+                                    if ($state === 'done') {
+                                        $filteredData[$id] = array_merge($row, ['state' => $state]);
+                                    }
+                                }
+                            }
+                            
+                            if (count($filteredData) > 0):
+                                $no = 1;
                         ?>
-                            <?php while($row = mysqli_fetch_assoc($result)): ?>
+                            <?php foreach($filteredData as $row): ?>
                                 <tr>
                                     <td class="min-w-50px">
                                         <div class="position-relative pe-3 py-2">
-                                            <span class="mb-1 text-gray-900 fw-bold"><?= $no++ ?></span>
+                                            <span class="mb-1 fw-bold" style="color: #2d3748; font-size: 0.95rem;"><?= $no++ ?></span>
                                         </div>
                                     </td>
                                     <td class="min-w-150px">
                                         <div class="d-flex gap-2 mb-2">
-                                            <a href="javascript:void(0);" class="badge badge-light-primary fs-7 btn-detail-shipping" data-id="<?= $row['id'] ?>" data-name="<?= htmlspecialchars($row['name']) ?>"><?= htmlspecialchars($row['name']) ?></a>
+                                            <a href="javascript:void(0);" class="btn-detail-shipping" 
+                                               data-id="<?= $row['id'] ?>" 
+                                               data-name="<?= htmlspecialchars($row['name']) ?>"
+                                               style="color: #000000; font-weight: 600; font-size: 0.9rem; text-decoration: none;">
+                                                <?= htmlspecialchars($row['name']) ?>
+                                            </a>
                                         </div>
                                     </td>
                                     <td class="min-w-200px">
-                                        <span class="fw-bold text-primary"><?= $row['sheduled_date'] ? date('Y-m-d', strtotime($row['sheduled_date'])) : '-' ?></span>
+                                        <span class="fw-bold" style="color: #2d3748; font-size: 0.9rem;"><?= $row['sheduled_date'] ? date('d-M-Y', strtotime($row['sheduled_date'])) : '-' ?></span>
                                     </td>
                                     <td class="min-w-200px">
-                                        <span class="fw-bold text-primary"><?= htmlspecialchars($row['description']) ?></span>
+                                        <?php
+                                        // Ambil hanya karakter alphanumeric, lalu ambil 2 huruf pertama
+                                        $cleanDesc = preg_replace('/[^A-Za-z0-9]/', '', $row['description']);
+                                        $descPrefix = strtoupper(substr($cleanDesc, 0, 2));
+                                        
+                                        // Jika kurang dari 2 karakter, gunakan karakter yang ada
+                                        if (strlen($descPrefix) < 2) {
+                                            $descPrefix = strtoupper(substr($cleanDesc, 0, 1)) . 'X';
+                                        }
+                                        
+                                        // Array warna soft yang berbeda untuk grouping (lebih banyak warna)
+                                        $colorPalette = [
+                                            ['bg' => '#e3f2fd', 'text' => '#1565c0', 'border' => '#bbdefb'], // Biru 1
+                                            ['bg' => '#f3e5f5', 'text' => '#6a1b9a', 'border' => '#ce93d8'], // Ungu 1
+                                            ['bg' => '#e8f5e9', 'text' => '#2e7d32', 'border' => '#c8e6c9'], // Hijau 1
+                                            ['bg' => '#fff3e0', 'text' => '#e65100', 'border' => '#ffcc02'], // Orange 1
+                                            ['bg' => '#fce4ec', 'text' => '#c2185b', 'border' => '#f8bbd0'], // Pink 1
+                                            ['bg' => '#e0f2f1', 'text' => '#00695c', 'border' => '#b2dfdb'], // Teal 1
+                                            ['bg' => '#fff9c4', 'text' => '#f57f17', 'border' => '#fff59d'], // Kuning 1
+                                            ['bg' => '#ede7f6', 'text' => '#4527a0', 'border' => '#b39ddb'], // Deep Purple
+                                            ['bg' => '#e1f5fe', 'text' => '#0277bd', 'border' => '#b3e5fc'], // Light Blue
+                                            ['bg' => '#f1f8e9', 'text' => '#558b2f', 'border' => '#dcedc8'], // Light Green
+                                            ['bg' => '#fff8e1', 'text' => '#ff6f00', 'border' => '#ffe082'], // Amber
+                                            ['bg' => '#e8eaf6', 'text' => '#283593', 'border' => '#c5cae9'], // Indigo
+                                            ['bg' => '#fbe9e7', 'text' => '#bf360c', 'border' => '#ffccbc'], // Deep Orange
+                                            ['bg' => '#e0f7fa', 'text' => '#00838f', 'border' => '#b2ebf2'], // Cyan
+                                            ['bg' => '#f3e5f5', 'text' => '#4a148c', 'border' => '#ce93d8'], // Purple Dark
+                                            ['bg' => '#e8f5e9', 'text' => '#1b5e20', 'border' => '#c8e6c9'], // Green Dark
+                                            ['bg' => '#fff3e0', 'text' => '#e65100', 'border' => '#ffe0b2'], // Orange Dark
+                                            ['bg' => '#fce4ec', 'text' => '#880e4f', 'border' => '#f8bbd0'], // Pink Dark
+                                            ['bg' => '#e3f2fd', 'text' => '#0d47a1', 'border' => '#bbdefb'], // Blue Dark
+                                            ['bg' => '#f1f8e9', 'text' => '#33691e', 'border' => '#dcedc8'], // Green Light
+                                        ];
+                                        
+                                        // Hash 2 huruf depan untuk mendapatkan index warna yang konsisten
+                                        // Gunakan formula yang lebih baik untuk mengurangi collision
+                                        // Kombinasi: (ASCII huruf1 * 31) + (ASCII huruf2 * 17) + panjang prefix
+                                        $hash = 0;
+                                        if (strlen($descPrefix) >= 2) {
+                                            $hash = (ord($descPrefix[0]) * 31) + (ord($descPrefix[1]) * 17) + strlen($descPrefix);
+                                        } else {
+                                            $hash = ord($descPrefix[0]) * 31;
+                                        }
+                                        // Gunakan prime number untuk modulo agar distribusi lebih merata
+                                        $colorIndex = abs($hash) % count($colorPalette);
+                                        $selectedColor = $colorPalette[$colorIndex];
+                                        ?>
+                                        <span class="badge" style="background-color: <?= $selectedColor['bg'] ?>; color: <?= $selectedColor['text'] ?>; border: 1px solid <?= $selectedColor['border'] ?>; padding: 6px 12px; font-weight: 600; font-size: 0.85rem;"><?= htmlspecialchars($row['description']) ?></span>
                                     </td>
                                     <td class="min-w-200px">
-                                        <span class="fw-bold text-primary"><?= htmlspecialchars($row['ship_to']) ?></span>
+                                        <span class="fw-semibold" style="color: #2d3748; font-size: 0.9rem;"><?= htmlspecialchars($row['ship_to']) ?></span>
+                                    </td>
+                                    <td class="min-w-150px">
+                                        <?php
+                                        $state = $row['state'] ?? 'draft';
+                                        $stateLabels = [
+                                            'draft' => 'Draft',
+                                            'in_progress' => 'In progress',
+                                            'done' => 'Done',
+                                            'cancel' => 'Cancelled'
+                                        ];
+                                        $stateBadgeStyles = [
+                                            'draft' => 'background-color: rgba(226, 232, 240, 0.5); color: #4a5568; border: 1px solid rgba(203, 213, 224, 0.5);',
+                                            'in_progress' => 'background-color: rgba(254, 243, 199, 0.5); color: #b45309; border: 1px solid rgba(253, 230, 138, 0.5);',
+                                            'done' => 'background-color: rgba(232, 245, 232, 0.5); color: #15803d; border: 1px solid rgba(200, 230, 201, 0.5);',
+                                            'cancel' => 'background-color: rgba(255, 235, 238, 0.5); color: #dc2626; border: 1px solid rgba(255, 205, 210, 0.5);'
+                                        ];
+                                        $stateIcons = [
+                                            'draft' => 'ki-file',
+                                            'in_progress' => 'ki-time',
+                                            'done' => 'ki-check-circle',
+                                            'cancel' => 'ki-cross-circle'
+                                        ];
+                                        $stateLabel = $stateLabels[$state] ?? ucfirst($state);
+                                        $badgeStyle = $stateBadgeStyles[$state] ?? $stateBadgeStyles['draft'];
+                                        $stateIcon = $stateIcons[$state] ?? 'ki-file';
+                                        ?>
+                                        <span class="badge fs-7 d-inline-flex align-items-center gap-1" style="<?= $badgeStyle ?> padding: 6px 12px; font-weight: 500; font-size: 0.85rem;">
+                                            <i class="ki-duotone <?= $stateIcon ?> fs-6">
+                                                <span class="path1"></span>
+                                                <span class="path2"></span>
+                                            </i>
+                                            <?= htmlspecialchars($stateLabel) ?>
+                                        </span>
                                     </td>
                                     <td class="text-end" style="white-space: nowrap;">
                                         <div class="d-flex align-items-center justify-content-end gap-2">
@@ -162,22 +317,6 @@ require_once __DIR__ . '/../../inc/config.php';
                                                     </li>
                                                 </ul>
                                             </div>
-                                            <button class="btn btn-sm btn-icon btn-light-info btn-detail-manual-stuffing" 
-                                                    style="flex-shrink: 0;"
-                                                    data-id="<?= $row['id'] ?>" 
-                                                    data-name="<?= htmlspecialchars($row['name']) ?>"
-                                                    title="Manual Stuffing Detail">
-                                                <i class="ki-duotone ki-barcode fs-2">
-                                                    <span class="path1"></span>
-                                                    <span class="path2"></span>
-                                                    <span class="path3"></span>
-                                                    <span class="path4"></span>
-                                                    <span class="path5"></span>
-                                                    <span class="path6"></span>
-                                                    <span class="path7"></span>
-                                                    <span class="path8"></span>
-                                                </i>
-                                            </button>
                                             <button class="btn btn-sm btn-icon btn-light-warning btn-compare-manual-stuffing" 
                                                     style="flex-shrink: 0;"
                                                     data-id="<?= $row['id'] ?>" 
@@ -191,18 +330,26 @@ require_once __DIR__ . '/../../inc/config.php';
                                         </div>
                                     </td>
                                 </tr>
-                            <?php endwhile; ?>
+                            <?php endforeach; ?>
                         <?php else: ?>
                             <tr>
-                                <td colspan="6" class="text-center">Tidak ada data shipping ditemukan</td>
+                                <td colspan="7" class="text-center" style="color: #2d3748; padding: 40px 20px; font-size: 0.95rem; font-weight: 500;">
+                                    <i class="ki-duotone ki-information-5 fs-2x mb-3" style="display: block; color: #cbd5e0;">
+                                        <span class="path1"></span>
+                                        <span class="path2"></span>
+                                        <span class="path3"></span>
+                                    </i>
+                                    Tidak ada data shipping ditemukan
+                                </td>
                             </tr>
-                        <?php endif;
+                        <?php 
+                            endif;
+                        }
 
                         // Tutup koneksi
-                        if ($result) {
+                        if (isset($result) && $result) {
                             mysqli_free_result($result);
                         }
-                        mysqli_close($conn);
                         ?>
                     </tbody>
                     <!--end::Table-->
@@ -236,6 +383,22 @@ require_once __DIR__ . '/../../inc/config.php';
 </div>
 
 <style>
+/* User-Friendly Text Colors for Table Content */
+#shippingTable tbody td {
+    color: #2d3748;
+    font-size: 0.9rem;
+}
+
+#shippingTable tbody td span {
+    color: inherit;
+}
+
+#shippingTable thead th {
+    color: #2d3748;
+    font-weight: 600;
+    font-size: 0.9rem;
+}
+
 /* Soft Color Scheme - Comparison Cards */
 .comparison-card {
     border: 1px solid #e9ecef;
@@ -375,6 +538,39 @@ require_once __DIR__ . '/../../inc/config.php';
 <script>
 // Script untuk menangani sync shipping
 document.addEventListener('DOMContentLoaded', function() {
+    // State filter handler
+    const stateFilter = document.getElementById('stateFilter');
+    if (stateFilter) {
+        // Set default value from URL parameter, default to 'draft_in_progress'
+        const urlParams = new URLSearchParams(window.location.search);
+        const stateParam = urlParams.get('state');
+        if (stateParam) {
+            stateFilter.value = stateParam;
+        } else {
+            // Set default to 'draft_in_progress' if no parameter
+            stateFilter.value = 'draft_in_progress';
+        }
+        
+        // Handle state filter change
+        stateFilter.addEventListener('change', function() {
+            const selectedState = this.value;
+            const url = new URL(window.location);
+            
+            if (selectedState && selectedState !== 'all') {
+                url.searchParams.set('state', selectedState);
+            } else if (selectedState === 'all') {
+                // For 'all', we can remove the parameter or keep it, let's keep it for consistency
+                url.searchParams.set('state', 'all');
+            } else {
+                // Default to draft_in_progress
+                url.searchParams.set('state', 'draft_in_progress');
+            }
+            
+            // Reload page with new filter
+            window.location.href = url.toString();
+        });
+    }
+    
     // Tombol sync shipping
     document.getElementById('syncShippingBtn').addEventListener('click', function() {
         // Tampilkan loading state
@@ -467,41 +663,6 @@ document.addEventListener('DOMContentLoaded', function() {
             const shippingId = this.dataset.id;
             // Buka window baru untuk print manual stuffing
             window.open('shipping/print_manual_stuffing.php?id=' + encodeURIComponent(shippingId), '_blank');
-        });
-    });
-    
-    // Manual Stuffing Detail button
-    const detailManualStuffingButtons = document.querySelectorAll(".btn-detail-manual-stuffing");
-    detailManualStuffingButtons.forEach(btn => {
-        btn.addEventListener("click", function() {
-            const shippingId = this.dataset.id;
-            const shippingName = this.dataset.name;
-            const modalBody = document.querySelector("#shippingDetailModal .modal-body");
-            const modalShippingName = document.getElementById("modalShippingName");
-
-            // Update Judul Modal
-            modalShippingName.textContent = "Manual Stuffing - # " + shippingName;
-
-            modalBody.innerHTML = "<div class='text-center p-5'>Loading...</div>";
-
-            fetch("shipping/get_manual_stuffing_detail.php", {
-                    method: "POST",
-                    headers: {
-                        "Content-Type": "application/x-www-form-urlencoded"
-                    },
-                    body: "id=" + encodeURIComponent(shippingId)
-                })
-                .then(response => response.text())
-                .then(data => {
-                    modalBody.innerHTML = data;
-                })
-                .catch(err => {
-                    modalBody.innerHTML = "<div class='alert alert-danger'>Error load data</div>";
-                    console.error(err);
-                });
-
-            const modal = new bootstrap.Modal(document.getElementById("shippingDetailModal"));
-            modal.show();
         });
     });
     
@@ -1683,20 +1844,9 @@ window.insertBarcodeToOdoo = function(btn) {
                     text: data.message || 'Berhasil memproses barcode ke Odoo',
                     confirmButtonText: 'OK',
                     confirmButtonColor: '#50CD89'
-                }).then(() => {
-                    // Reload detail setelah user klik OK
-                    const detailButton = document.querySelector('.btn-detail-manual-stuffing[data-id="' + shippingId + '"]');
-                    if (detailButton) {
-                        detailButton.click();
-                    }
                 });
             } else {
                 alert('✓ ' + (data.message || 'Berhasil memproses barcode'));
-                // Reload detail
-                const detailButton = document.querySelector('.btn-detail-manual-stuffing[data-id="' + shippingId + '"]');
-                if (detailButton) {
-                    detailButton.click();
-                }
             }
         } else {
             // Gunakan SweetAlert untuk error juga jika tersedia
@@ -1733,5 +1883,49 @@ window.insertBarcodeToOdoo = function(btn) {
 };
 </script>
 
-<script src="../components/pagination.js"></script>
-<script src="../components/search.js"></script>
+<?php
+// Calculate components path - more reliable for production
+// Get current file path relative to document root
+$currentFile = str_replace('\\', '/', __FILE__);
+$docRoot = str_replace('\\', '/', $_SERVER['DOCUMENT_ROOT']);
+$relativePath = str_replace($docRoot, '', $currentFile);
+// Get directory (modul/shipping/)
+$fileDir = dirname($relativePath);
+// Go up two levels to panel_om/
+$basePath = dirname(dirname($fileDir));
+// Build components path
+$componentsPath = rtrim($basePath, '/') . '/components';
+// Ensure path starts with /
+if (substr($componentsPath, 0, 1) !== '/') {
+    $componentsPath = '/' . $componentsPath;
+}
+?>
+<script src="<?= htmlspecialchars($componentsPath) ?>/pagination.js"></script>
+<script src="<?= htmlspecialchars($componentsPath) ?>/search.js"></script>
+<script>
+// Initialize pagination and search for shipping table
+document.addEventListener('DOMContentLoaded', function() {
+    // Wait a bit for scripts to load
+    setTimeout(function() {
+        const shippingTable = document.getElementById('shippingTable');
+        if (shippingTable) {
+            // Setup pagination
+            if (typeof setupPagination === 'function') {
+                shippingTable.style.display = 'table';
+                setupPagination('shippingTable', 20);
+            } else {
+                console.error('setupPagination function not found. Make sure pagination.js is loaded correctly.');
+            }
+            
+            // Setup search
+            if (typeof setupSearch === 'function') {
+                setupSearch('shippingTable', 20);
+            } else {
+                console.error('setupSearch function not found. Make sure search.js is loaded correctly.');
+            }
+        } else {
+            console.error('shippingTable element not found');
+        }
+    }, 100);
+});
+</script>

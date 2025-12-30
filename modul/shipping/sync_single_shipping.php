@@ -45,14 +45,41 @@ try {
     
     $batch = $batches[0];
     $batch_id = $batch['id'];
-    
-    // Update shipping info di database lokal
+    $name = $batch['name'] ?? '';
     $scheduled_date = $batch['scheduled_date'] ?? null;
     $description = $batch['description'] ?? '';
+    $ship_to = '';
     
-    $stmt_update = $conn->prepare("UPDATE shipping SET sheduled_date = ?, description = ? WHERE id = ?");
-    $stmt_update->bind_param("ssi", $scheduled_date, $description, $shipping_id);
-    $stmt_update->execute();
+    // Get picking details to get ship_to information
+    if (!empty($batch['picking_ids'])) {
+        $picking = callOdooRead($username, 'stock.picking', [['id', 'in', $batch['picking_ids']]], ['partner_id']);
+        if ($picking && isset($picking[0]['partner_id'][1])) {
+            $ship_to = $picking[0]['partner_id'][1];
+        }
+    }
+    
+    // Update shipping info di database lokal - update semua field termasuk tanggal
+    $stmt_update = $conn->prepare("UPDATE shipping SET name = ?, sheduled_date = ?, description = ?, ship_to = ? WHERE id = ?");
+    $stmt_update->bind_param("ssssi", $name, $scheduled_date, $description, $ship_to, $shipping_id);
+    
+    if (!$stmt_update->execute()) {
+        error_log("Error updating shipping: " . $stmt_update->error);
+        echo json_encode(['success' => false, 'message' => 'Error updating shipping: ' . $stmt_update->error]);
+        exit;
+    } else {
+        $affected_rows = $stmt_update->affected_rows;
+        error_log("Shipping updated successfully - ID: $shipping_id, Scheduled Date: $scheduled_date, Description: $description, Affected Rows: $affected_rows");
+        
+        // Verify the update by reading back from database
+        $stmt_verify = $conn->prepare("SELECT sheduled_date, description FROM shipping WHERE id = ?");
+        $stmt_verify->bind_param("i", $shipping_id);
+        $stmt_verify->execute();
+        $verify_result = $stmt_verify->get_result();
+        if ($verify_row = $verify_result->fetch_assoc()) {
+            error_log("Verified - DB has scheduled_date: " . ($verify_row['sheduled_date'] ?? 'NULL') . ", description: " . ($verify_row['description'] ?? 'NULL'));
+        }
+        $stmt_verify->close();
+    }
     $stmt_update->close();
     
     // Process picking_ids

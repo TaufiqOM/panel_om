@@ -247,7 +247,8 @@ foreach ($structured_data as $picking_group) {
                 'product_ref' => null,
                 'finishing' => null,
                 'qty' => 0,
-                'tot_part' => 0
+                'tot_part' => 0,
+                'default_code' => null // Akan di-assign nanti dari Odoo jika ada
             ];
         }
         
@@ -342,7 +343,8 @@ if (!empty($missing_codes)) {
                 'product_ref' => $product_ref,
                 'finishing' => $manual_data['finishing'] ?? null,
                 'qty' => 0,
-                'tot_part' => 0
+                'tot_part' => 0,
+                'default_code' => null // Missing codes tidak punya product_id, jadi tidak bisa ambil default_code dari Odoo
             ];
         }
         
@@ -400,14 +402,15 @@ error_log("=== M3 PREPARE: product_ids list: " . json_encode($product_ids_for_m3
 
 // Ambil data M3 dari Odoo langsung dari product.packaging berdasarkan product_id atau product_tmpl_id
 $m3_data = [];
+$product_id_to_default_code = []; // Mapping product_id -> default_code (inisialisasi di luar scope)
 if (!empty($product_ids_for_m3)) {
     if (empty($username)) {
         error_log("=== M3 FETCH: Warning: Username tidak ditemukan di session, skip M3 fetch ===");
     } else {
         error_log("=== M3 FETCH: Mulai fetch M3 untuk product_ids: " . json_encode($product_ids_for_m3) . " ===");
         
-        // Ambil product.product untuk mendapatkan product_tmpl_id
-        $products = callOdooRead($username, 'product.product', [['id', 'in', $product_ids_for_m3]], ['id', 'name', 'product_tmpl_id']);
+        // Ambil product.product untuk mendapatkan product_tmpl_id dan default_code
+        $products = callOdooRead($username, 'product.product', [['id', 'in', $product_ids_for_m3]], ['id', 'name', 'product_tmpl_id', 'default_code']);
         
         $product_tmpl_ids = [];
         $product_id_to_tmpl = [];
@@ -418,6 +421,13 @@ if (!empty($product_ids_for_m3)) {
                 $prod_name = $product['name'] ?? 'N/A';
                 
                 if (!$prod_id) continue;
+                
+                // Ambil default_code
+                $default_code = $product['default_code'] ?? null;
+                if ($default_code) {
+                    $product_id_to_default_code[$prod_id] = $default_code;
+                    error_log("=== DEFAULT_CODE FETCH: Product ID: $prod_id, Default Code: $default_code ===");
+                }
                 
                 // Ambil product_tmpl_id
                 $tmpl_id = null;
@@ -552,6 +562,14 @@ foreach ($grouped_data as $group_key => &$product_data) {
         $product_data['m3'] = 0;
         $product_data['tot_m3'] = 0;
         error_log("=== M3 ASSIGN: SKIP - Product ID kosong untuk group_key: $group_key ===");
+    }
+    
+    // Assign default_code jika ada
+    if ($product_id && isset($product_id_to_default_code[$product_id])) {
+        $product_data['default_code'] = $product_id_to_default_code[$product_id];
+        error_log("=== DEFAULT_CODE ASSIGN: Product ID $product_id - Default Code: {$product_data['default_code']} ===");
+    } else {
+        $product_data['default_code'] = null;
     }
 }
 unset($product_data);
@@ -1203,19 +1221,36 @@ error_log("=== M3 ASSIGN: Selesai assign M3 ===");
                         $product_id = $product_data['product_id'];
                         $product_ref = $product_data['product_ref'];
                         $product_name = $product_data['product_name'];
+                        $default_code = $product_data['default_code'] ?? null;
                         $finishing = $product_data['finishing'];
                         $qty = $product_data['qty'];
                         $tot_part = $product_data['tot_part'];
                         $m3 = $product_data['m3'] ?? 0;
                         $tot_m3 = $product_data['tot_m3'] ?? 0;
                         
+                        // Tentukan ID Produk dengan prioritas: default_code > ekstrak dari nama produk > product_ref > product_id
+                        $display_product_id = '-';
+                        if (!empty($default_code)) {
+                            $display_product_id = $default_code;
+                        } else if (!empty($product_name)) {
+                            // Ekstrak ID dari nama produk yang berbentuk [20999] Part of Goods
+                            if (preg_match('/^\[([^\]]+)\]/', $product_name, $matches)) {
+                                $display_product_id = $matches[1];
+                            }
+                        }
+                        
+                        // Fallback ke product_ref atau product_id jika masih kosong
+                        if ($display_product_id === '-') {
+                            $display_product_id = $product_ref ?: ($product_id ?: '-');
+                        }
+                        
                         // Log untuk debugging display
-                        error_log("=== M3 DISPLAY: Product ID: $product_id, Name: $product_name, m3: $m3, tot_m3: $tot_m3, qty: $qty ===");
+                        error_log("=== M3 DISPLAY: Product ID: $product_id, Default Code: " . ($default_code ?? 'NULL') . ", Display ID: $display_product_id, Name: $product_name, m3: $m3, tot_m3: $tot_m3, qty: $qty ===");
                     ?>
                         <!-- Product Row -->
                         <tr class="product-row">
                             <td class="text-center"><?= $product_no++ ?></td>
-                            <td class="text-left"><?= htmlspecialchars($product_ref ?: ($product_id ?: '-')) ?></td>
+                            <td class="text-left"><?= htmlspecialchars($display_product_id) ?></td>
                             <td class="text-left"><?= htmlspecialchars($product_name ?: 'Unknown') ?></td>
                             <td class="text-right"><?= $m3 > 0 ? number_format($m3, 3) : '-' ?></td>
                             <td class="text-right"><?= $qty ?></td>

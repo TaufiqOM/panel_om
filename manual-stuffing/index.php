@@ -200,7 +200,7 @@ if ($shipping_id > 0) {
             background: white;
             padding: 25px;
             border-radius: 12px;
-            margin-bottom: 20px;
+            margin-bottom: 12px;
             box-shadow: 0 2px 8px rgba(0,0,0,0.1);
         }
 
@@ -216,30 +216,30 @@ if ($shipping_id > 0) {
 
         .info-grid {
             display: grid;
-            grid-template-columns: 1fr 1fr 1fr;
+            grid-template-columns: 1fr 1fr;
             gap: 15px;
             margin-top: 20px;
         }
 
         .info-box {
             background: #f8f9fa;
-            padding: 15px;
-            border-radius: 8px;
+            padding: 10px;
+            border-radius: 6px;
             text-align: center;
-            border: 2px solid #e9ecef;
+            border: 1px solid #e9ecef;
         }
 
         .info-label {
-            font-size: 12px;
+            font-size: 10px;
             color: #666;
             text-transform: uppercase;
             font-weight: 600;
-            letter-spacing: 0.5px;
-            margin-bottom: 8px;
+            letter-spacing: 0.3px;
+            margin-bottom: 5px;
         }
 
         .info-value {
-            font-size: 16px;
+            font-size: 13px;
             color: #333;
             font-weight: 600;
         }
@@ -247,46 +247,46 @@ if ($shipping_id > 0) {
         /* Scan Section */
         .scan-section {
             background: white;
-            padding: 30px;
+            padding: 20px;
             border-radius: 12px;
-            margin-bottom: 20px;
+            margin-bottom: 12px;
             box-shadow: 0 2px 8px rgba(0,0,0,0.1);
             text-align: center;
         }
 
         .scan-icon {
-            font-size: 48px;
-            margin-bottom: 20px;
+            font-size: 36px;
+            margin-bottom: 15px;
         }
 
         .scan-input {
             width: 100%;
-            padding: 16px;
-            font-size: 18px;
-            border: 3px solid #4CAF50;
+            padding: 12px;
+            font-size: 16px;
+            border: 2px solid #4CAF50;
             border-radius: 8px;
             text-align: center;
-            margin-bottom: 15px;
+            margin-bottom: 10px;
             outline: none;
         }
 
         .scan-input:focus {
             border-color: #45a049;
-            box-shadow: 0 0 0 4px rgba(76, 175, 80, 0.1);
+            box-shadow: 0 0 0 3px rgba(76, 175, 80, 0.1);
         }
 
         .scan-help {
             color: #666;
-            font-size: 14px;
-            margin-bottom: 20px;
+            font-size: 12px;
+            margin-bottom: 15px;
         }
 
         .btn-submit {
             background: #4CAF50;
             color: white;
             border: none;
-            padding: 16px 40px;
-            font-size: 18px;
+            padding: 12px 30px;
+            font-size: 14px;
             border-radius: 8px;
             cursor: pointer;
             font-weight: 600;
@@ -305,21 +305,21 @@ if ($shipping_id > 0) {
         .counter {
             background: #4CAF50;
             color: white;
-            padding: 20px;
-            border-radius: 12px;
+            padding: 15px;
+            border-radius: 10px;
             text-align: center;
-            margin-bottom: 20px;
+            margin-bottom: 12px;
             box-shadow: 0 2px 8px rgba(0,0,0,0.1);
         }
 
         .counter-number {
-            font-size: 48px;
+            font-size: 40px;
             font-weight: bold;
-            margin-bottom: 5px;
+            margin-bottom: 4px;
         }
 
         .counter-label {
-            font-size: 16px;
+            font-size: 14px;
             opacity: 0.9;
         }
 
@@ -361,7 +361,8 @@ if ($shipping_id > 0) {
         }
 
         .search-container {
-            margin-bottom: 15px;
+            flex: 0 0 auto;
+            width: 250px;
         }
 
         .search-input-wrapper {
@@ -371,8 +372,8 @@ if ($shipping_id > 0) {
 
         .search-input {
             width: 100%;
-            padding: 12px 40px 12px 12px;
-            font-size: 16px;
+            padding: 8px 35px 8px 10px;
+            font-size: 14px;
             border: 2px solid #ddd;
             border-radius: 6px;
             outline: none;
@@ -452,10 +453,16 @@ if ($shipping_id > 0) {
             background: #f9f9f9;
         }
 
+        .item-left {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex-shrink: 0;
+        }
+
         .item-number {
             font-weight: bold;
             color: #666;
-            margin-right: 15px;
         }
 
         .item-code {
@@ -549,6 +556,55 @@ if ($shipping_id > 0) {
             opacity: 0.3;
         }
 
+        /* Pagination */
+        .pagination {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 8px;
+            margin-top: 20px;
+            padding-top: 20px;
+            border-top: 2px solid #eee;
+        }
+
+        .pagination-btn {
+            background: #2196F3;
+            color: white;
+            border: none;
+            padding: 10px 16px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+            transition: all 0.2s ease;
+            min-width: 40px;
+        }
+
+        .pagination-btn:hover:not(:disabled) {
+            background: #1976D2;
+            transform: translateY(-2px);
+        }
+
+        .pagination-btn:active:not(:disabled) {
+            transform: translateY(0);
+        }
+
+        .pagination-btn:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+            opacity: 0.6;
+        }
+
+        .pagination-btn.active {
+            background: #4CAF50;
+        }
+
+        .pagination-info {
+            color: #666;
+            font-size: 14px;
+            margin: 0 10px;
+        }
+
         /* Success Animation */
         .toast {
             position: fixed;
@@ -591,17 +647,103 @@ if ($shipping_id > 0) {
                 padding: 10px;
             }
 
+            .header {
+                padding: 15px;
+                margin-bottom: 10px;
+            }
+
             .header h1 {
-                font-size: 22px;
+                font-size: 18px;
+                margin-bottom: 12px;
+                padding-bottom: 10px;
+                border-bottom-width: 2px;
             }
 
             .info-grid {
-                grid-template-columns: 1fr;
-                gap: 10px;
+                grid-template-columns: 1fr 1fr;
+                gap: 6px;
+                margin-top: 12px;
+            }
+
+            .info-box {
+                padding: 6px 4px;
+                border-width: 1px;
+            }
+
+            .info-label {
+                font-size: 8px;
+                margin-bottom: 3px;
+            }
+
+            .info-value {
+                font-size: 10px;
+                word-break: break-word;
+            }
+
+            .counter {
+                padding: 12px;
+                margin-bottom: 10px;
+            }
+
+            .counter-number {
+                font-size: 32px;
+            }
+
+            .counter-label {
+                font-size: 12px;
+            }
+
+            .list-header {
+                flex-wrap: wrap;
+                gap: 8px;
+            }
+
+            .list-title {
+                font-size: 16px;
+            }
+
+            .search-container {
+                width: auto;
+                flex: 1;
+                min-width: 150px;
+            }
+
+            .search-input {
+                font-size: 13px;
+                padding: 6px 30px 6px 8px;
+            }
+
+            .search-clear {
+                right: 8px;
+                font-size: 18px;
+                width: 18px;
+                height: 18px;
+            }
+
+            .scan-section {
+                padding: 15px;
+                margin-bottom: 10px;
+            }
+
+            .scan-icon {
+                font-size: 28px;
+                margin-bottom: 10px;
             }
 
             .scan-input {
-                font-size: 16px;
+                font-size: 14px;
+                padding: 10px;
+                margin-bottom: 8px;
+            }
+
+            .scan-help {
+                font-size: 11px;
+                margin-bottom: 12px;
+            }
+
+            .btn-submit {
+                padding: 10px 20px;
+                font-size: 13px;
             }
 
             .counter-number {
@@ -624,10 +766,12 @@ if ($shipping_id > 0) {
                 font-size: 20px;
             }
 
+            .item-left {
+                gap: 8px;
+            }
+
             .item-number {
-                width: 30px;
                 font-size: 14px;
-                margin-right: 8px;
             }
 
             .item-code {
@@ -679,12 +823,28 @@ if ($shipping_id > 0) {
                 <h1><?php echo htmlspecialchars($shipping_data['description']); ?></h1>
                 <div class="info-grid">
                     <div class="info-box">
-                        <div class="info-label">Nama Pengiriman</div>
-                        <div class="info-value"><?php echo htmlspecialchars($shipping_data['name']); ?></div>
-                    </div>
-                    <div class="info-box">
                         <div class="info-label">Tanggal Kirim</div>
-                        <div class="info-value"><?php echo htmlspecialchars($shipping_data['sheduled_date']); ?></div>
+                        <div class="info-value">
+                            <?php 
+                            if (!empty($shipping_data['sheduled_date'])) {
+                                $date = DateTime::createFromFormat('Y-m-d H:i:s', $shipping_data['sheduled_date']);
+                                if (!$date) {
+                                    $date = DateTime::createFromFormat('Y-m-d', $shipping_data['sheduled_date']);
+                                }
+                                if ($date) {
+                                    $months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+                                    $day = $date->format('d');
+                                    $month = $months[(int)$date->format('m') - 1];
+                                    $year = $date->format('Y');
+                                    echo htmlspecialchars($day . '-' . $month . '-' . $year);
+                                } else {
+                                    echo htmlspecialchars($shipping_data['sheduled_date']);
+                                }
+                            } else {
+                                echo '';
+                            }
+                            ?>
+                        </div>
                     </div>
                     <div class="info-box">
                         <div class="info-label">Tujuan</div>
@@ -694,18 +854,57 @@ if ($shipping_id > 0) {
             </div>
 
             <?php
-            // Ambil data stuffing dengan sale_order_line_id dari production_lots_strg
-            $stmt_stuffing = $conn->prepare("
+            // Pagination settings
+            $items_per_page = 10;
+            $current_page = isset($_GET['page']) ? max(1, intval($_GET['page'])) : 1;
+            $offset = ($current_page - 1) * $items_per_page;
+            
+            // Search parameter
+            $search_term = isset($_GET['search']) ? trim($_GET['search']) : '';
+            $search_where = '';
+            $search_param = '';
+            
+            if (!empty($search_term)) {
+                $search_where = " AND sms.production_code LIKE ?";
+                $search_param = "%{$search_term}%";
+            }
+            
+            // Hitung total records untuk pagination (dengan search)
+            $count_query = "
+                SELECT COUNT(*) as total
+                FROM shipping_manual_stuffing sms
+                WHERE sms.id_shipping = ? {$search_where}
+            ";
+            $stmt_count = $conn->prepare($count_query);
+            if (!empty($search_term)) {
+                $stmt_count->bind_param("is", $shipping_id, $search_param);
+            } else {
+                $stmt_count->bind_param("i", $shipping_id);
+            }
+            $stmt_count->execute();
+            $result_count = $stmt_count->get_result();
+            $total_records = $result_count->fetch_assoc()['total'];
+            $total_pages = ceil($total_records / $items_per_page);
+            $stmt_count->close();
+            
+            // Ambil data stuffing dengan sale_order_line_id dari production_lots_strg (dengan pagination dan search)
+            $query = "
                 SELECT 
                     sms.id, 
                     sms.production_code,
                     pls.sale_order_line_id
                 FROM shipping_manual_stuffing sms
                 LEFT JOIN production_lots_strg pls ON pls.production_code = sms.production_code
-                WHERE sms.id_shipping = ? 
+                WHERE sms.id_shipping = ? {$search_where}
                 ORDER BY sms.id DESC
-            ");
-            $stmt_stuffing->bind_param("i", $shipping_id);
+                LIMIT ? OFFSET ?
+            ";
+            $stmt_stuffing = $conn->prepare($query);
+            if (!empty($search_term)) {
+                $stmt_stuffing->bind_param("isii", $shipping_id, $search_param, $items_per_page, $offset);
+            } else {
+                $stmt_stuffing->bind_param("iii", $shipping_id, $items_per_page, $offset);
+            }
             $stmt_stuffing->execute();
             $result_stuffing = $stmt_stuffing->get_result();
             $stuffing_data = [];
@@ -773,8 +972,14 @@ if ($shipping_id > 0) {
 
             <!-- Counter -->
             <div class="counter">
-                <div class="counter-number" id="totalCount"><?php echo count($stuffing_data); ?></div>
-                <div class="counter-label">Total Item Terscan</div>
+                <div class="counter-number" id="totalCount"><?php echo $total_records; ?></div>
+                <div class="counter-label">
+                    <?php if (!empty($search_term)): ?>
+                        Hasil Pencarian
+                    <?php else: ?>
+                        Total Item Terscan
+                    <?php endif; ?>
+                </div>
             </div>
 
             <!-- Scan Section -->
@@ -791,7 +996,6 @@ if ($shipping_id > 0) {
                         autofocus 
                         autocomplete="off"
                     >
-                    <div class="scan-help">Arahkan scanner ke kotak di atas atau ketik manual</div>
                     <button type="submit" class="btn-submit">✓ SUBMIT</button>
                 </form>
             </div>
@@ -800,13 +1004,22 @@ if ($shipping_id > 0) {
             <div class="list-section">
                 <div class="list-header">
                     <div class="list-title">Daftar Item</div>
-                    <button class="btn-refresh" onclick="location.reload()">🔄 Refresh</button>
-                </div>
-
-                <div class="search-container">
-                    <div class="search-input-wrapper">
-                        <input type="text" class="search-input" id="searchInput" placeholder="Cari barcode yang sudah terscan...">
-                        <button type="button" class="search-clear" id="searchClear" title="Clear search">×</button>
+                    <div class="search-container">
+                        <div class="search-input-wrapper">
+                            <form method="GET" action="" id="searchForm" style="display: flex; width: 100%;">
+                                <input type="hidden" name="id" value="<?php echo $shipping_id; ?>">
+                                <input 
+                                    type="text" 
+                                    class="search-input" 
+                                    id="searchInput" 
+                                    name="search"
+                                    value="<?php echo htmlspecialchars($search_term); ?>"
+                                    placeholder="Cari barcode..."
+                                    autocomplete="off"
+                                >
+                                <button type="button" class="search-clear" id="searchClear" title="Clear search">×</button>
+                            </form>
+                        </div>
                     </div>
                 </div>
 
@@ -814,13 +1027,15 @@ if ($shipping_id > 0) {
                     <div id="itemList">
                         <?php foreach ($stuffing_data as $index => $item): ?>
                             <div class="list-item" data-id="<?php echo $item['id']; ?>">
-                                <?php if (!empty($item['product_image'])): ?>
-                                    <img src="<?php echo htmlspecialchars($item['product_image']); ?>" alt="Product" class="item-image" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
-                                    <div class="item-image-placeholder" style="display: none;">📦</div>
-                                <?php else: ?>
-                                    <div class="item-image-placeholder">📦</div>
-                                <?php endif; ?>
-                                <span class="item-number"><?php echo $index + 1; ?>.</span>
+                                <div class="item-left">
+                                    <span class="item-number"><?php echo $offset + $index + 1; ?>.</span>
+                                    <?php if (!empty($item['product_image'])): ?>
+                                        <img src="<?php echo htmlspecialchars($item['product_image']); ?>" alt="Product" class="item-image" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
+                                        <div class="item-image-placeholder" style="display: none;">📦</div>
+                                    <?php else: ?>
+                                        <div class="item-image-placeholder">📦</div>
+                                    <?php endif; ?>
+                                </div>
                                 <div class="item-content">
                                     <span class="item-code"><?php echo htmlspecialchars($item['production_code']); ?></span>
                                     <?php if (!empty($item['product_name'])): ?>
@@ -836,10 +1051,71 @@ if ($shipping_id > 0) {
                             </div>
                         <?php endforeach; ?>
                     </div>
+                    
+                    <?php if ($total_pages > 1): ?>
+                        <div class="pagination">
+                            <?php
+                            $search_param_url = !empty($search_term) ? '&search=' . urlencode($search_term) : '';
+                            ?>
+                            <button 
+                                class="pagination-btn" 
+                                onclick="window.location.href='?id=<?php echo $shipping_id; ?>&page=<?php echo max(1, $current_page - 1); ?><?php echo $search_param_url; ?>'"
+                                <?php echo $current_page <= 1 ? 'disabled' : ''; ?>
+                            >
+                                ‹ Prev
+                            </button>
+                            
+                            <?php
+                            // Tampilkan maksimal 5 nomor halaman
+                            $start_page = max(1, $current_page - 2);
+                            $end_page = min($total_pages, $current_page + 2);
+                            
+                            // Jika di awal, pastikan tampil 5 halaman
+                            if ($end_page - $start_page < 4) {
+                                if ($start_page == 1) {
+                                    $end_page = min($total_pages, $start_page + 4);
+                                } else {
+                                    $start_page = max(1, $end_page - 4);
+                                }
+                            }
+                            
+                            for ($i = $start_page; $i <= $end_page; $i++):
+                            ?>
+                                <button 
+                                    class="pagination-btn <?php echo $i == $current_page ? 'active' : ''; ?>"
+                                    onclick="window.location.href='?id=<?php echo $shipping_id; ?>&page=<?php echo $i; ?><?php echo $search_param_url; ?>'"
+                                >
+                                    <?php echo $i; ?>
+                                </button>
+                            <?php endfor; ?>
+                            
+                            <button 
+                                class="pagination-btn" 
+                                onclick="window.location.href='?id=<?php echo $shipping_id; ?>&page=<?php echo min($total_pages, $current_page + 1); ?><?php echo $search_param_url; ?>'"
+                                <?php echo $current_page >= $total_pages ? 'disabled' : ''; ?>
+                            >
+                                Next ›
+                            </button>
+                            
+                            <span class="pagination-info">
+                                Halaman <?php echo $current_page; ?> dari <?php echo $total_pages; ?>
+                                <?php if (!empty($search_term)): ?>
+                                    <br><small style="font-size: 11px; opacity: 0.7;">Hasil pencarian: "<?php echo htmlspecialchars($search_term); ?>"</small>
+                                <?php endif; ?>
+                            </span>
+                        </div>
+                    <?php endif; ?>
                 <?php else: ?>
                     <div class="no-data">
                         <div class="no-data-icon">📭</div>
-                        <p>Belum ada item yang discan</p>
+                        <?php if (!empty($search_term)): ?>
+                            <p>Tidak ada hasil untuk "<?php echo htmlspecialchars($search_term); ?>"</p>
+                            <p style="margin-top: 10px; font-size: 14px;">
+                                <a href="?id=<?php echo $shipping_id; ?>&page=1" style="color: #2196F3; text-decoration: underline;">Tampilkan semua item</a>
+                            </p>
+                        <?php else: ?>
+                            <p>Belum ada item yang discan</p>
+                        <?php endif; ?>
                     </div>
                 <?php endif; ?>
             </div>
@@ -903,9 +1179,16 @@ if ($shipping_id > 0) {
                             // Clear input
                             input.value = '';
                             
-                            // Reload after 1.5 seconds
+                            // Reload after 1.5 seconds dengan mempertahankan search parameter
                             setTimeout(() => {
-                                location.reload();
+                                const urlParams = new URLSearchParams();
+                                urlParams.set('id', '<?php echo $shipping_id; ?>');
+                                <?php if (!empty($search_term)): ?>
+                                urlParams.set('search', '<?php echo urlencode($search_term); ?>');
+                                <?php endif; ?>
+                                // Setelah submit barcode baru, tampilkan di halaman 1
+                                urlParams.set('page', '1');
+                                window.location.href = '?' + urlParams.toString();
                             }, 1500);
                         } else {
                             // Show error toast
@@ -931,41 +1214,47 @@ if ($shipping_id > 0) {
                     }
                 });
 
-                // Search functionality
-                function updateSearch() {
-                    const searchTerm = document.getElementById('searchInput').value.toLowerCase();
-                    const items = document.querySelectorAll('.list-item');
-                    let visibleCount = 0;
-
-                    items.forEach(item => {
-                        const code = item.querySelector('.item-code').textContent.toLowerCase();
-                        const productName = item.querySelector('.item-product-name');
-                        const productNameText = productName ? productName.textContent.toLowerCase() : '';
-                        const info = item.querySelector('.item-info');
-                        const infoText = info ? info.textContent.toLowerCase() : '';
-                        if (code.includes(searchTerm) || productNameText.includes(searchTerm) || infoText.includes(searchTerm)) {
-                            item.style.display = '';
-                            visibleCount++;
-                        } else {
-                            item.style.display = 'none';
+                // Search functionality - submit form untuk server-side search
+                let searchTimeout;
+                document.getElementById('searchInput').addEventListener('input', function() {
+                    clearTimeout(searchTimeout);
+                    const searchTerm = this.value.trim();
+                    
+                    // Debounce: tunggu 500ms setelah user berhenti mengetik
+                    searchTimeout = setTimeout(function() {
+                        const form = document.getElementById('searchForm');
+                        const urlParams = new URLSearchParams();
+                        urlParams.set('id', '<?php echo $shipping_id; ?>');
+                        if (searchTerm) {
+                            urlParams.set('search', searchTerm);
                         }
-                    });
+                        // Reset ke halaman 1 saat search
+                        urlParams.set('page', '1');
+                        window.location.href = '?' + urlParams.toString();
+                    }, 500);
+                });
 
-                    // Update counter
-                    const counter = document.getElementById('totalCount');
-                    if (searchTerm === '') {
-                        counter.textContent = items.length;
-                    } else {
-                        counter.textContent = visibleCount;
+                // Submit form dengan Enter
+                document.getElementById('searchForm').addEventListener('submit', function(e) {
+                    e.preventDefault();
+                    clearTimeout(searchTimeout);
+                    const searchTerm = document.getElementById('searchInput').value.trim();
+                    const urlParams = new URLSearchParams();
+                    urlParams.set('id', '<?php echo $shipping_id; ?>');
+                    if (searchTerm) {
+                        urlParams.set('search', searchTerm);
                     }
-                }
-
-                document.getElementById('searchInput').addEventListener('input', updateSearch);
+                    urlParams.set('page', '1');
+                    window.location.href = '?' + urlParams.toString();
+                });
 
                 // Clear button functionality
                 document.getElementById('searchClear').addEventListener('click', function() {
-                    document.getElementById('searchInput').value = '';
-                    updateSearch();
+                    clearTimeout(searchTimeout);
+                    const urlParams = new URLSearchParams();
+                    urlParams.set('id', '<?php echo $shipping_id; ?>');
+                    urlParams.set('page', '1');
+                    window.location.href = '?' + urlParams.toString();
                 });
 
                 // Delete item functionality
@@ -997,34 +1286,16 @@ if ($shipping_id > 0) {
                                 if (data.success) {
                                     showToast('Item berhasil dihapus', 'success');
                                     
-                                    // Remove the item from DOM
-                                    const listItem = buttonElement.closest('.list-item');
-                                    listItem.style.transition = 'opacity 0.3s ease';
-                                    listItem.style.opacity = '0';
-                                    
+                                    // Reload halaman dengan mempertahankan search dan page parameter
                                     setTimeout(() => {
-                                        listItem.remove();
-                                        
-                                        // Update counter
-                                        const items = document.querySelectorAll('.list-item');
-                                        document.getElementById('totalCount').textContent = items.length;
-                                        
-                                        // Update item numbers
-                                        items.forEach((item, index) => {
-                                            item.querySelector('.item-number').textContent = (index + 1) + '.';
-                                        });
-                                        
-                                        // If no items left, show no-data message
-                                        if (items.length === 0) {
-                                            const itemList = document.getElementById('itemList');
-                                            itemList.innerHTML = `
-                                                <div class="no-data">
-                                                    <div class="no-data-icon">📭</div>
-                                                    <p>Belum ada item yang discan</p>
-                                                </div>
-                                            `;
-                                        }
-                                    }, 300);
+                                        const urlParams = new URLSearchParams();
+                                        urlParams.set('id', '<?php echo $shipping_id; ?>');
+                                        <?php if (!empty($search_term)): ?>
+                                        urlParams.set('search', '<?php echo urlencode($search_term); ?>');
+                                        <?php endif; ?>
+                                        urlParams.set('page', '<?php echo $current_page; ?>');
+                                        window.location.href = '?' + urlParams.toString();
+                                    }, 500);
                                 } else {
                                     showToast(data.message || 'Gagal menghapus item', 'error');
                                     buttonElement.disabled = false;

@@ -21,7 +21,7 @@ require __DIR__ . '/../../inc/config_odoo.php';
 $username = $_SESSION['username'] ?? '';
 
 // Get shipping batches from Odoo (stock.picking.batch model)
-$batches = callOdooRead($username, 'stock.picking.batch', [], ['id', 'name', 'scheduled_date', 'description', 'picking_ids']);
+$batches = callOdooRead($username, 'stock.picking.batch', [], ['id', 'name', 'scheduled_date', 'description', 'picking_ids', 'state']);
 
 // Return JSON response
 header('Content-Type: application/json');
@@ -40,6 +40,7 @@ if (is_array($batches) && count($batches) > 0) {
         $name = $batch['name'] ?? '';
         $scheduled_date = $batch['scheduled_date'] ?? null;
         $description = $batch['description'] ?? '';
+        $state = $batch['state'] ?? 'draft';
         $ship_to = '';
 
         // Get picking details to get ship_to information
@@ -67,7 +68,7 @@ if (is_array($batches) && count($batches) > 0) {
         } else {
             // Update existing record
             $stmt = $conn->prepare("UPDATE shipping SET name = ?, sheduled_date = ?, description = ?, ship_to = ? WHERE id = ?");
-            $stmt->bind_param("sssss", $name, $scheduled_date, $description, $ship_to, $batch_id);
+            $stmt->bind_param("ssssi", $name, $scheduled_date, $description, $ship_to, $batch_id);
             if ($stmt->execute()) {
                 $updated_count++;
             }

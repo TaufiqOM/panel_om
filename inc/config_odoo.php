@@ -40,24 +40,24 @@ function odooConnectionInfo($username){
     // }
 
     // Config Staging Odoo
-    if ($result) {
-        return [
-            'url'      => 'https://om-omegamas-staging-26859603.dev.odoo.com/jsonrpc', //url odoo
-            'db'       => 'om-omegamas-staging-26859603', // db odoo
-            'uid'      => (int)$result['uid'],
-            'password' => decrypt_password($result['password']),
-        ];
-    }
-
-    // Config Local Odoo (Active)
     // if ($result) {
     //     return [
-    //         'url'      => 'http://localhost:8069/jsonrpc', //url odoo local
-    //         'db'       => 'main', // db odoo local
+    //         'url'      => 'https://om-omegamas-staging-26859603.dev.odoo.com/jsonrpc', //url odoo
+    //         'db'       => 'om-omegamas-staging-26859603', // db odoo
     //         'uid'      => (int)$result['uid'],
     //         'password' => decrypt_password($result['password']),
     //     ];
     // }
+
+    // Config Local Odoo (Active)
+    if ($result) {
+        return [
+            'url'      => 'http://192.168.0.109:8069/jsonrpc', //url odoo local
+            'db'       => 'main', // db odoo local
+            'uid'      => (int)$result['uid'],
+            'password' => decrypt_password($result['password']),
+        ];
+    }
 
     return null;
 }
