@@ -52,7 +52,7 @@ function odooConnectionInfo($username){
     // Config Local Odoo (Active)
     if ($result) {
         return [
-            'url'      => 'http://192.168.0.109:8069/jsonrpc', //url odoo local
+            'url'      => 'http://localhost:8069/jsonrpc', //url odoo local
             'db'       => 'main', // db odoo local
             'uid'      => (int)$result['uid'],
             'password' => decrypt_password($result['password']),

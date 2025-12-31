@@ -66,6 +66,10 @@ try {
     $total_processed = 0;
     $errors = [];
     
+    // Track move_id yang perlu di-uncheck picked setelah create move line
+    // Key: move_id, Value: true jika perlu di-uncheck
+    $moves_to_uncheck_picked = [];
+    
     error_log("Jumlah picking ditemukan: " . count($pickings));
     
     // Loop per picking
@@ -227,6 +231,8 @@ try {
                     if ($create_result !== false && $create_result > 0) {
                         $total_processed++;
                         $success_count++;
+                        // Mark move_id untuk di-uncheck picked
+                        $moves_to_uncheck_picked[$move_id] = true;
                         error_log("Berhasil create move line untuk barcode: $barcode (picking: $picking_id, move: $move_id)");
                     } else {
                         $error_msg = "Gagal create move line untuk barcode: $barcode (picking: $picking_id, move: $move_id)";
@@ -241,6 +247,22 @@ try {
                     error_log("Berhasil insert $success_count barcode untuk move_id: $move_id - quantity_done akan dihitung otomatis oleh Odoo");
                 }
             }
+        }
+    }
+    
+    // STEP 3: Uncheck picked untuk semua move_id yang sudah di-create move line-nya
+    // Ini untuk mencegah picked otomatis terceklis oleh Odoo
+    if (!empty($moves_to_uncheck_picked)) {
+        $move_ids_to_uncheck = array_keys($moves_to_uncheck_picked);
+        error_log("Unchecking picked untuk " . count($move_ids_to_uncheck) . " move_id: " . implode(', ', $move_ids_to_uncheck));
+        
+        $uncheck_result = callOdooWrite($username, 'stock.move', $move_ids_to_uncheck, ['picked' => false]);
+        
+        if ($uncheck_result !== false) {
+            error_log("Berhasil uncheck picked untuk " . count($move_ids_to_uncheck) . " move_id");
+        } else {
+            $errors[] = "Gagal uncheck picked untuk beberapa move_id";
+            error_log("Gagal uncheck picked untuk move_ids: " . implode(', ', $move_ids_to_uncheck));
         }
     }
     

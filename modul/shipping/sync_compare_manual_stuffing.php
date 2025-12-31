@@ -63,13 +63,64 @@ try {
         exit;
     }
     
-    $total_deleted = 0;
-    $total_created = 0;
+    $total_updated = 0;
+    $total_inserted = 0;
     $errors = [];
+    
+    // Track quantity per move_id untuk update quantity
+    // Key: move_id, Value: jumlah barcode yang berhasil di-insert
+    $move_quantity_map = [];
+    
+    // Track move_id yang perlu di-uncheck picked setelah create move line
+    // Key: move_id, Value: true jika perlu di-uncheck
+    $moves_to_uncheck_picked = [];
     
     // Track barcode yang sudah di-insert untuk menghindari duplikasi
     // Key: barcode, Value: true jika sudah di-insert
     $inserted_barcodes_tracker = [];
+    
+    // STEP 0: Kumpulkan semua move_id yang akan diproses dan reset quantity ke 0
+    $all_move_ids_to_reset = [];
+    
+    // Loop per picking untuk mengumpulkan move_ids
+    foreach ($pickings as $picking) {
+        $picking_id = $picking['id'];
+        $sale_id = is_array($picking['sale_id']) ? $picking['sale_id'][0] : ($picking['sale_id'] ?? 0);
+        
+        if (!$sale_id) {
+            continue;
+        }
+        
+        // Ambil move_ids
+        $picking_full = callOdooRead($username, 'stock.picking', [['id', '=', $picking_id]], ['move_ids']);
+        $move_ids = $picking_full[0]['move_ids'] ?? [];
+        
+        if (!empty($move_ids)) {
+            $all_move_ids_to_reset = array_merge($all_move_ids_to_reset, $move_ids);
+        }
+    }
+    
+    // Reset quantity stock.move ke 0 untuk semua move_id yang akan diproses
+    if (!empty($all_move_ids_to_reset)) {
+        // Hapus duplikat move_id
+        $all_move_ids_to_reset = array_unique($all_move_ids_to_reset);
+        
+        error_log("Reset quantity stock.move ke 0 untuk " . count($all_move_ids_to_reset) . " move_id");
+        
+        // Update quantity ke 0 untuk semua move (product_uom_qty tidak diubah)
+        foreach ($all_move_ids_to_reset as $move_id) {
+            $reset_result = callOdooWrite($username, 'stock.move', [$move_id], [
+                'quantity' => 0
+            ]);
+            
+            if ($reset_result === false) {
+                $errors[] = "Gagal reset quantity untuk move_id: $move_id";
+                error_log("Gagal reset quantity untuk move_id: $move_id");
+            } else {
+                error_log("Berhasil reset quantity ke 0 untuk move_id: $move_id");
+            }
+        }
+    }
     
     // Loop per picking untuk sinkronisasi
     foreach ($pickings as $picking) {
@@ -110,25 +161,19 @@ try {
                     continue;
                 }
                 
-                // Ambil barcode dari Odoo (stock.move.line dengan lot_name)
-                $odoo_barcodes = [];
-                $move_line_ids_for_delete = [];
+                // Ambil barcode yang sudah ada di Odoo untuk move ini
+                $existing_barcodes = [];
                 if (!empty($move_line_ids)) {
-                    $move_lines = callOdooRead($username, 'stock.move.line', [['id', 'in', $move_line_ids]], ['id', 'lot_id', 'lot_name']);
-                    
-                    if ($move_lines && is_array($move_lines)) {
-                        foreach ($move_lines as $line) {
-                            $lot_name = null;
-                            
-                            if (isset($line['lot_id']) && is_array($line['lot_id']) && count($line['lot_id']) >= 2) {
-                                $lot_name = $line['lot_id'][1];
-                            } else if (isset($line['lot_name']) && !empty($line['lot_name'])) {
-                                $lot_name = $line['lot_name'];
-                            }
-                            
-                            if ($lot_name && !empty($lot_name)) {
-                                $odoo_barcodes[] = $lot_name;
-                                $move_line_ids_for_delete[$line['id']] = $lot_name;
+                    $existing_move_lines = callOdooRead($username, 'stock.move.line', [['id', 'in', $move_line_ids]], ['lot_id']);
+                    if ($existing_move_lines && is_array($existing_move_lines)) {
+                        foreach ($existing_move_lines as $move_line) {
+                            $lot_id = is_array($move_line['lot_id']) ? $move_line['lot_id'][0] : $move_line['lot_id'];
+                            if ($lot_id) {
+                                // Ambil nama lot (barcode) dari Odoo
+                                $lot_info = callOdooRead($username, 'stock.lot', [['id', '=', $lot_id]], ['name']);
+                                if ($lot_info && !empty($lot_info)) {
+                                    $existing_barcodes[] = $lot_info[0]['name'];
+                                }
                             }
                         }
                     }
@@ -183,72 +228,23 @@ try {
                     }
                 }
                 
-                // Bandingkan barcode
-                $matched_barcodes = array_intersect($odoo_barcodes, $scanned_barcodes); // Barcode yang cocok di kedua sisi
-                $odoo_only = array_diff($odoo_barcodes, $scanned_barcodes); // Hanya ada di Odoo (akan dihapus)
-                $scanned_only = array_diff($scanned_barcodes, $odoo_barcodes); // Hanya ada di scan (akan ditambahkan)
-                
-                // STEP 1: Hapus move_line yang lot_name-nya ada di odoo_only
-                // PENTING: Barcode yang matched TIDAK akan dihapus karena tidak ada di odoo_only
-                $move_line_ids_to_unlink = [];
-                foreach ($move_line_ids_for_delete as $move_line_id => $lot_name) {
-                    // Hanya hapus yang ada di odoo_only, skip yang matched
-                    if (in_array($lot_name, $odoo_only)) {
-                        $move_line_ids_to_unlink[] = $move_line_id;
+                // Filter barcode yang belum ada di Odoo (untuk di-insert)
+                $barcodes_to_insert = [];
+                foreach ($scanned_barcodes as $barcode) {
+                    // Skip jika barcode ini sudah di-insert sebelumnya (hindari duplikasi)
+                    if (isset($inserted_barcodes_tracker[$barcode])) {
+                        continue;
+                    }
+                    // Hanya insert yang belum ada di Odoo
+                    if (!in_array($barcode, $existing_barcodes)) {
+                        $barcodes_to_insert[] = $barcode;
                     }
                 }
                 
-                // Unlink (delete) move lines secara batch
-                if (!empty($move_line_ids_to_unlink)) {
-                    $connInfo = odooConnectionInfo($username);
-                    if ($connInfo) {
-                        $delete_params = [
-                            "jsonrpc" => "2.0",
-                            "method" => "call",
-                            "params" => [
-                                "service" => "object",
-                                "method" => "execute_kw",
-                                "args" => [
-                                    $connInfo['db'],
-                                    $connInfo['uid'],
-                                    $connInfo['password'],
-                                    'stock.move.line',
-                                    'unlink',
-                                    [$move_line_ids_to_unlink]
-                                ]
-                            ],
-                            "id" => 1
-                        ];
-                        
-                        $curl = curl_init($connInfo['url']);
-                        curl_setopt_array($curl, [
-                            CURLOPT_RETURNTRANSFER => true,
-                            CURLOPT_POST => true,
-                            CURLOPT_POSTFIELDS => json_encode($delete_params),
-                            CURLOPT_HTTPHEADER => ['Content-Type: application/json'],
-                            CURLOPT_SSL_VERIFYPEER => false,
-                            CURLOPT_SSL_VERIFYHOST => false
-                        ]);
-                        
-                        $response = curl_exec($curl);
-                        $httpCode = curl_getinfo($curl, CURLINFO_HTTP_CODE);
-                        curl_close($curl);
-                        
-                        $decoded = json_decode($response, true);
-                        if ($decoded && isset($decoded['result']) && $decoded['result'] === true) {
-                            $total_deleted += count($move_line_ids_to_unlink);
-                            error_log("Berhasil hapus " . count($move_line_ids_to_unlink) . " move_line untuk move_id: $move_id");
-                        } else {
-                            $errors[] = "Gagal hapus move_line untuk move_id: $move_id";
-                            error_log("Gagal hapus move_line untuk move_id: $move_id. Response: " . substr($response, 0, 500));
-                        }
-                    }
-                }
-                
-                // STEP 2: Tambah move_line baru untuk barcode yang ada di scanned_only
-                // PENTING: Barcode yang matched TIDAK akan ditambahkan karena tidak ada di scanned_only
-                foreach ($scanned_only as $barcode) {
-                    // Skip jika barcode ini sudah di-insert sebelumnya (hindari duplikasi dari shipping_manual_stuffing)
+                // Insert barcode yang belum ada ke Odoo sebagai move_line
+                $move_line_count_for_this_move = count($existing_barcodes); // Hitung dari yang sudah ada
+                foreach ($barcodes_to_insert as $barcode) {
+                    // Skip jika barcode ini sudah di-insert sebelumnya (hindari duplikasi)
                     if (isset($inserted_barcodes_tracker[$barcode])) {
                         error_log("Barcode $barcode sudah di-insert sebelumnya, skip untuk menghindari duplikasi");
                         continue;
@@ -279,9 +275,12 @@ try {
                     $create_result = callOdooCreate($username, 'stock.move.line', $move_line_data);
                     
                     if ($create_result !== false && $create_result > 0) {
-                        $total_created++;
+                        $total_inserted++;
+                        $move_line_count_for_this_move++;
                         // Mark barcode sebagai sudah di-insert
                         $inserted_barcodes_tracker[$barcode] = true;
+                        // Mark move_id untuk di-uncheck picked
+                        $moves_to_uncheck_picked[$move_id] = true;
                         error_log("Berhasil create move line untuk barcode: $barcode (picking: $picking_id, move: $move_id)");
                     } else {
                         $error_msg = "Gagal create move line untuk barcode: $barcode (picking: $picking_id, move: $move_id)";
@@ -289,23 +288,95 @@ try {
                         error_log($error_msg);
                     }
                 }
+                
+                // Simpan quantity berdasarkan jumlah barcode (existing + yang berhasil di-insert)
+                if ($move_line_count_for_this_move > 0) {
+                    $move_quantity_map[$move_id] = $move_line_count_for_this_move;
+                }
             }
         }
     }
     
-    $message = "Sinkronisasi selesai. Dihapus: $total_deleted, Ditambahkan: $total_created";
+    // STEP 2: Uncheck picked untuk semua move_id yang sudah di-create move line-nya
+    // Ini untuk mencegah picked otomatis terceklis oleh Odoo
+    if (!empty($moves_to_uncheck_picked)) {
+        $move_ids_to_uncheck = array_keys($moves_to_uncheck_picked);
+        error_log("Unchecking picked untuk " . count($move_ids_to_uncheck) . " move_id: " . implode(', ', $move_ids_to_uncheck));
+        
+        $uncheck_result = callOdooWrite($username, 'stock.move', $move_ids_to_uncheck, ['picked' => false]);
+        
+        if ($uncheck_result !== false) {
+            error_log("Berhasil uncheck picked untuk " . count($move_ids_to_uncheck) . " move_id");
+        } else {
+            $errors[] = "Gagal uncheck picked untuk beberapa move_id";
+            error_log("Gagal uncheck picked untuk move_ids: " . implode(', ', $move_ids_to_uncheck));
+        }
+    }
+    
+    // STEP 3: Update quantity stock.move berdasarkan jumlah barcode (existing + yang berhasil di-insert)
+    if (!empty($move_quantity_map)) {
+        error_log("Update quantity stock.move untuk " . count($move_quantity_map) . " move_id berdasarkan barcode manual stuffing");
+        
+        foreach ($move_quantity_map as $move_id => $quantity) {
+            $update_result = callOdooWrite($username, 'stock.move', [$move_id], [
+                'quantity' => $quantity
+            ]);
+            
+            if ($update_result === false) {
+                $errors[] = "Gagal update quantity untuk move_id: $move_id";
+                error_log("Gagal update quantity untuk move_id: $move_id (quantity: $quantity)");
+            } else {
+                $total_updated++;
+                error_log("Berhasil update quantity untuk move_id: $move_id (quantity: $quantity)");
+            }
+        }
+    }
+    
+    // STEP 4: Update scheduled_date di semua picking sesuai scheduled_date dari shipping
+    $scheduled_date_updated = 0;
+    if (!empty($picking_ids) && !empty($shipping['sheduled_date'])) {
+        $shipping_scheduled_date = $shipping['sheduled_date'];
+        // Format tanggal untuk Odoo (format: YYYY-MM-DD HH:MM:SS atau YYYY-MM-DD)
+        // Konversi ke format yang sesuai untuk Odoo
+        $scheduled_date_formatted = date('Y-m-d H:i:s', strtotime($shipping_scheduled_date));
+        
+        error_log("Update scheduled_date di " . count($picking_ids) . " picking menjadi: $scheduled_date_formatted");
+        
+        foreach ($picking_ids as $picking_id) {
+            $update_picking_result = callOdooWrite($username, 'stock.picking', [$picking_id], [
+                'scheduled_date' => $scheduled_date_formatted
+            ]);
+            
+            if ($update_picking_result === false) {
+                $errors[] = "Gagal update scheduled_date untuk picking_id: $picking_id";
+                error_log("Gagal update scheduled_date untuk picking_id: $picking_id");
+            } else {
+                $scheduled_date_updated++;
+                error_log("Berhasil update scheduled_date untuk picking_id: $picking_id menjadi: $scheduled_date_formatted");
+            }
+        }
+    }
+    
+    $message = "Sinkronisasi selesai. Diinsert: $total_inserted barcode, Diupdate: $total_updated move_id";
+    if ($scheduled_date_updated > 0) {
+        $message .= ", $scheduled_date_updated picking";
+    }
     if (!empty($errors)) {
         $message .= ". Error: " . count($errors) . " item";
     }
     
     error_log("=== END SYNC COMPARE MANUAL STUFFING ===");
-    error_log("Total deleted: $total_deleted, Total created: $total_created");
+    error_log("Total inserted: $total_inserted barcode");
+    error_log("Total updated: $total_updated move_id");
+    if ($scheduled_date_updated > 0) {
+        error_log("Total picking updated: $scheduled_date_updated picking");
+    }
     
     echo json_encode([
         'success' => true,
         'message' => $message,
-        'deleted' => $total_deleted,
-        'created' => $total_created,
+        'inserted' => $total_inserted,
+        'updated' => $total_updated,
         'errors' => $errors
     ]);
     

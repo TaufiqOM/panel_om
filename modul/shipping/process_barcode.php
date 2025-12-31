@@ -334,6 +334,10 @@ try {
     $processed = 0;
     $errors = [];
     
+    // Track move_id yang perlu di-uncheck picked setelah create move line
+    // Key: move_id, Value: true jika perlu di-uncheck
+    $moves_to_uncheck_picked = [];
+    
     // Group matched_lots by picking_id
     $matched_lots_by_picking = [];
     foreach ($matched_lots as $lot) {
@@ -408,12 +412,30 @@ try {
                 
                 if ($create_result !== false) {
                     $processed++;
+                    // Mark move_id untuk di-uncheck picked
+                    $moves_to_uncheck_picked[$move_id] = true;
                     error_log("Created move line for lot: " . $lot['lot_name'] . " in picking: $process_picking_id");
                 } else {
                     $errors[] = "Gagal create move line untuk lot: " . $lot['lot_name'] . " di picking: $process_picking_id";
                     error_log("Failed to create move line for lot: " . $lot['lot_name']);
                 }
             }
+        }
+    }
+    
+    // Step 7: Uncheck picked untuk semua move_id yang sudah di-create move line-nya
+    // Ini untuk mencegah picked otomatis terceklis oleh Odoo
+    if (!empty($moves_to_uncheck_picked)) {
+        $move_ids_to_uncheck = array_keys($moves_to_uncheck_picked);
+        error_log("Unchecking picked untuk " . count($move_ids_to_uncheck) . " move_id: " . implode(', ', $move_ids_to_uncheck));
+        
+        $uncheck_result = callOdooWrite($username, 'stock.move', $move_ids_to_uncheck, ['picked' => false]);
+        
+        if ($uncheck_result !== false) {
+            error_log("Berhasil uncheck picked untuk " . count($move_ids_to_uncheck) . " move_id");
+        } else {
+            $errors[] = "Gagal uncheck picked untuk beberapa move_id";
+            error_log("Gagal uncheck picked untuk move_ids: " . implode(', ', $move_ids_to_uncheck));
         }
     }
     
