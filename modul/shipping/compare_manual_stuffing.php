@@ -44,6 +44,7 @@ if (!empty($picking_ids)) {
 }
 
 $comparison_data = [];
+$total_product_uom_qty = 0; // Total product_uom_qty dari semua stock.move
 
 // Loop per picking untuk mengumpulkan data
 foreach ($pickings as $picking) {
@@ -212,6 +213,9 @@ foreach ($pickings as $picking) {
             // Ambil product_uom_qty dari move
             $product_uom_qty = intval($move['product_uom_qty'] ?? 0);
             
+            // Tambahkan ke total product_uom_qty
+            $total_product_uom_qty += $product_uom_qty;
+            
             $products[] = [
                 'product_id' => $product_id,
                 'product_name' => $product_name,
@@ -243,6 +247,7 @@ foreach ($pickings as $picking) {
 
 // Ambil semua barcode yang sudah di-scan untuk shipping ini
 $all_scanned_barcodes = [];
+$total_scanned_barcodes = 0;
 $sql_all_scanned = "SELECT DISTINCT production_code FROM shipping_manual_stuffing WHERE id_shipping = ?";
 $stmt_all_scanned = $conn->prepare($sql_all_scanned);
 if ($stmt_all_scanned) {
@@ -252,6 +257,7 @@ if ($stmt_all_scanned) {
     while ($row = $result_all_scanned->fetch_assoc()) {
         $all_scanned_barcodes[] = $row['production_code'];
     }
+    $total_scanned_barcodes = count($all_scanned_barcodes);
     $stmt_all_scanned->close();
 }
 
@@ -392,6 +398,39 @@ foreach ($product_qty_map as $key => $data) {
         <div class="col-md-6">
           <small class="text-muted">Tanggal Terjadwal:</small>
           <div class="fw-bold"><?= $shipping['sheduled_date'] ? date('Y-m-d', strtotime($shipping['sheduled_date'])) : '-' ?></div>
+        </div>
+      </div>
+    </div>
+    
+    <!-- Info Total Barcode yang Terscan dan Jumlah Barcode Produk yang Direncanakan -->
+    <div class="row g-2 mb-3">
+      <div class="col-md-6">
+        <div class="py-2 px-3 d-flex align-items-center justify-content-between" style="background-color: #fff3e0; border: 1px solid #ffcc02; border-radius: 4px;">
+          <div class="d-flex align-items-center">
+            <i class="ki-duotone ki-cube fs-2 me-2" style="color: #ef6c00;">
+              <span class="path1"></span>
+              <span class="path2"></span>
+              <span class="path3"></span>
+            </i>
+            <div>
+              <small class="text-dark fw-bold d-block">Jumlah Barcode Produk yang Direncanakan</small>
+              <span class="badge badge-warning fs-6"><?= number_format($total_product_uom_qty, 0, ',', '.') ?> unit</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="col-md-6">
+        <div class="py-2 px-3 d-flex align-items-center justify-content-between" style="background-color: #e7f3ff; border: 1px solid #b3d9ff; border-radius: 4px;">
+          <div class="d-flex align-items-center">
+            <i class="ki-duotone ki-barcode fs-2 me-2" style="color: #1565c0;">
+              <span class="path1"></span>
+              <span class="path2"></span>
+            </i>
+            <div>
+              <small class="text-dark fw-bold d-block">Total Barcode yang Terscan di Manual Stuffing</small>
+              <span class="badge badge-primary fs-6"><?= $total_scanned_barcodes ?> barcode</span>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -588,8 +627,8 @@ foreach ($product_qty_map as $key => $data) {
     
     <!-- Summary -->
     <?php
-    $total_match = 0;
-    $total_mismatch = 0;
+    $total_match = 0; // Total barcode yang cocok
+    $total_mismatch = 0; // Total barcode yang tidak cocok (odoo_only + scanned_only)
     $total_products = 0;
     $total_line_items = 0; // Jumlah semua stock.move entries
     $unique_products = []; // Untuk menghitung unique product
@@ -605,38 +644,60 @@ foreach ($product_qty_map as $key => $data) {
                 $total_products++;
             }
             
-            if ($product['is_match']) {
-                $total_match++;
-            } else {
-                $total_mismatch++;
-            }
+            // Hitung berdasarkan barcode, bukan product
+            // Barcode yang cocok (matched_barcodes)
+            $total_match += count($product['matched_barcodes'] ?? []);
+            
+            // Barcode yang tidak cocok (hanya di Odoo atau hanya di scan)
+            $total_mismatch += count($product['odoo_only'] ?? []);
+            $total_mismatch += count($product['scanned_only'] ?? []);
         }
     }
     ?>
     
-    <div class="d-flex justify-content-between align-items-center mb-3">
-      <div>
-        <h6 class="mb-1">Ringkasan:</h6>
-        <div class="fs-7">
-          <span class="badge badge-light-primary">Total Line Items: <?= $total_line_items ?></span>
-          <span class="badge badge-light-info ms-2">Unique Products: <?= $total_products ?></span>
-          <span class="badge badge-light-success ms-2">Cocok: <?= $total_match ?></span>
-          <?php if ($total_mismatch > 0): ?>
-            <span class="badge badge-light-danger ms-2">Tidak Cocok: <?= $total_mismatch ?></span>
-          <?php endif; ?>
+    <!-- Summary Box -->
+    <div class="border rounded p-2 mb-3" style="background-color: #ffffff; border-color: #dee2e6 !important;">
+      <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <div class="flex-grow-1">
+          <div class="row g-2">
+            <div class="col-6 col-md-3">
+              <div class="px-3 py-2 rounded h-100" style="background-color: #e8f5e9; border-left: 3px solid #4caf50; min-height: 60px;">
+                <div class="fw-bold mb-1" style="font-size: 0.8rem; color: #1b5e20 !important;">Cocok</div>
+                <div class="fw-bolder" style="font-size: 1.3rem; color: #1b5e20 !important;"><?= $total_match ?></div>
+              </div>
+            </div>
+            <div class="col-6 col-md-3">
+              <div class="px-3 py-2 rounded h-100" style="background-color: #ffebee; border-left: 3px solid #f44336; min-height: 60px;">
+                <div class="fw-bold mb-1" style="font-size: 0.8rem; color: #b71c1c !important;">Tidak Cocok</div>
+                <div class="fw-bolder" style="font-size: 1.3rem; color: #b71c1c !important;"><?= $total_mismatch ?></div>
+              </div>
+            </div>
+            <div class="col-6 col-md-3">
+              <div class="px-3 py-2 rounded h-100" style="background-color: #fff3e0; border-left: 3px solid #ff9800; min-height: 60px;">
+                <div class="fw-bold mb-1" style="font-size: 0.8rem; color: #e65100 !important;">Direncanakan</div>
+                <div class="fw-bolder" style="font-size: 1.3rem; color: #e65100 !important;"><?= number_format($total_product_uom_qty, 0, ',', '.') ?></div>
+              </div>
+            </div>
+            <div class="col-6 col-md-3">
+              <div class="px-3 py-2 rounded h-100" style="background-color: #e3f2fd; border-left: 3px solid #2196f3; min-height: 60px;">
+                <div class="fw-bold mb-1" style="font-size: 0.8rem; color: #0d47a1 !important;">Terscan</div>
+                <div class="fw-bolder" style="font-size: 1.3rem; color: #0d47a1 !important;"><?= $total_scanned_barcodes ?></div>
+              </div>
+            </div>
+          </div>
         </div>
+        <?php if ($total_mismatch > 0): ?>
+        <div>
+          <button class="btn btn-primary btn-sm btn-sync-compare" id="btnSyncCompare" data-shipping-id="<?= $shipping_id ?>">
+            <i class="ki-duotone ki-arrows-circle fs-5 me-1">
+              <span class="path1"></span>
+              <span class="path2"></span>
+            </i>
+            Sinkron
+          </button>
+        </div>
+        <?php endif; ?>
       </div>
-      <?php if ($total_mismatch > 0): ?>
-      <div>
-        <button class="btn btn-primary btn-sync-compare" id="btnSyncCompare" data-shipping-id="<?= $shipping_id ?>">
-          <i class="ki-duotone ki-arrows-circle fs-4 me-1">
-            <span class="path1"></span>
-            <span class="path2"></span>
-          </i>
-          Sinkron
-        </button>
-      </div>
-      <?php endif; ?>
     </div>
     
     <?php if ($total_mismatch > 0): ?>
