@@ -434,8 +434,63 @@ if (!empty($missing_codes)) {
     }
 }
 
-// Sort grouped_data berdasarkan product_name untuk display
-uasort($grouped_data, function($a, $b) {
+// Sort items per group: items with existing Picking/SO first, missing ones last
+foreach ($grouped_data as &$group) {
+    if (isset($group['items']) && is_array($group['items'])) {
+        usort($group['items'], function($a, $b) use ($code_to_picking_map) {
+            $code_a = $a['production_code'] ?? '';
+            $code_b = $b['production_code'] ?? '';
+            
+            $info_a = $code_to_picking_map[$code_a]['picking_name'] ?? '';
+            $has_a = !empty($info_a) && $info_a !== '-';
+            
+            $info_b = $code_to_picking_map[$code_b]['picking_name'] ?? '';
+            $has_b = !empty($info_b) && $info_b !== '-';
+            
+            if ($has_a && !$has_b) return -1; // a has info, b doesn't -> a first
+            if (!$has_a && $has_b) return 1;  // a doesn't, b has -> b first
+            
+            return strcmp($code_a, $code_b);
+        });
+    }
+}
+unset($group);
+
+// Sort grouped_data untuk display
+// Logic: Group yang memiliki setidaknya SATU item dengan valid Picking/SO akan ditampilkan LEBIH DULU
+// Group yang semua itemnya "Picking/SO missing" akan ditampilkan DI BELAKANG
+uasort($grouped_data, function($a, $b) use ($code_to_picking_map) {
+    // Cek apakah group a punya valid item
+    $has_valid_a = false;
+    if (isset($a['items']) && is_array($a['items'])) {
+        foreach ($a['items'] as $item) {
+            $code = $item['production_code'] ?? '';
+            $info = $code_to_picking_map[$code]['picking_name'] ?? '';
+            if (!empty($info) && $info !== '-') {
+                $has_valid_a = true;
+                break;
+            }
+        }
+    }
+
+    // Cek apakah group b punya valid item
+    $has_valid_b = false;
+    if (isset($b['items']) && is_array($b['items'])) {
+        foreach ($b['items'] as $item) {
+            $code = $item['production_code'] ?? '';
+            $info = $code_to_picking_map[$code]['picking_name'] ?? '';
+            if (!empty($info) && $info !== '-') {
+                $has_valid_b = true;
+                break;
+            }
+        }
+    }
+    
+    // Sort: Valid groups first
+    if ($has_valid_a && !$has_valid_b) return -1;
+    if (!$has_valid_a && $has_valid_b) return 1;
+
+    // By product name
     return strcmp($a['product_name'] ?? '', $b['product_name'] ?? '');
 });
 
