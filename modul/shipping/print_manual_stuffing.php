@@ -156,11 +156,10 @@ foreach ($pickings as $picking) {
                     }
                 }
                 
-                // LOGIKA BARU: Ambil barcode dengan prioritas:
-                // 1. Ambil dari Odoo dulu (stock.move.line dengan lot_name)
-                // 2. Jika kurang, ambil dari production_lots_strg yang tidak sama dengan yang di Odoo
-                // 3. Jika di strg tidak ada, ambil dari barcode_item
-                // 4. Beri keterangan posisi dari production_lots_history
+                // LOGIKA BARU (REVISI): Langsung ambil dari DB local, anggap di Odoo belum ada.
+                // 1. Ambil dari production_lots_strg
+                // 2. Jika di strg tidak ada/kurang, ambil dari barcode_item
+                // 3. Beri keterangan posisi dari production_lots_history
                 $valid_barcodes = []; // Array of ['barcode' => string, 'position' => string]
                 $needed_qty = intval($product_uom_qty);
                 
@@ -170,63 +169,9 @@ foreach ($pickings as $picking) {
                     $escaped_so_name = $conn->real_escape_string($so_name);
                     $escaped_client_order_ref = $conn->real_escape_string($client_order_ref);
                     
-                    // STEP 1: Ambil barcode dari Odoo (stock.move.line dengan lot_name untuk move_id ini)
-                    $odoo_barcodes = [];
-                    $move_lines = callOdooRead($username, 'stock.move.line', [['move_id', '=', $move_id]], ['lot_id', 'lot_name']);
-                    
-                    if ($move_lines && is_array($move_lines)) {
-                        foreach ($move_lines as $line) {
-                            $lot_name = null;
-                            
-                            // Try to get lot_name from lot_id field
-                            if (isset($line['lot_id']) && is_array($line['lot_id']) && count($line['lot_id']) >= 2) {
-                                $lot_name = $line['lot_id'][1];
-                            }
-                            // Fallback: try lot_name field
-                            else if (isset($line['lot_name']) && !empty($line['lot_name'])) {
-                                $lot_name = $line['lot_name'];
-                            }
-                            
-                            if ($lot_name && !empty($lot_name)) {
-                                $odoo_barcodes[] = $lot_name;
-                            }
-                        }
-                    }
-                    
-                    // Ambil posisi untuk barcode dari Odoo
-                    foreach ($odoo_barcodes as $barcode) {
-                        // Ambil posisi terakhir dari production_lots_history
-                        $sql_pos = "SELECT plh.station_code, s.station_name 
-                                   FROM production_lots_history plh
-                                   LEFT JOIN stations s ON s.station_code = plh.station_code
-                                   WHERE plh.production_code = ?
-                                   ORDER BY plh.scan_in DESC, plh.id DESC
-                                   LIMIT 1";
-                        $stmt_pos = $conn->prepare($sql_pos);
-                        $position = '';
-                        if ($stmt_pos) {
-                            $stmt_pos->bind_param("s", $barcode);
-                            $stmt_pos->execute();
-                            $result_pos = $stmt_pos->get_result();
-                            if ($row_pos = $result_pos->fetch_assoc()) {
-                                $position = $row_pos['station_name'] ?? $row_pos['station_code'] ?? '';
-                            }
-                            $stmt_pos->close();
-                        }
-                        
-                        $valid_barcodes[] = [
-                            'barcode' => $barcode,
-                            'position' => $position
-                        ];
-                    }
-                    
-                    // STEP 2: Jika masih kurang, ambil dari production_lots_strg yang tidak sama dengan yang di Odoo
-                    $current_count = count($valid_barcodes);
-                    if ($current_count < $needed_qty) {
-                        $still_needed = $needed_qty - $current_count;
-                        $odoo_barcode_list = array_column($valid_barcodes, 'barcode');
-                        $odoo_barcode_placeholders = str_repeat('?,', count($odoo_barcode_list));
-                        $odoo_barcode_placeholders = rtrim($odoo_barcode_placeholders, ',');
+                    // STEP 1 (Revised): Langsung ambil dari production_lots_strg
+                    $current_count = 0;
+                    $still_needed = $needed_qty;
                         
                     $sql_strg = "SELECT pls.production_code 
                                  FROM production_lots_strg pls
@@ -239,22 +184,12 @@ foreach ($pickings as $picking) {
                                  AND pls.sale_order_line_id = ?
                                      AND sms.production_code IS NULL";
                         
-                        // Exclude barcode yang sudah ada di Odoo
-                        if (!empty($odoo_barcode_list)) {
-                            $sql_strg .= " AND pls.production_code NOT IN ($odoo_barcode_placeholders)";
-                        }
-                        
-                        $sql_strg .= " ORDER BY pls.id DESC LIMIT ?";
+                    $sql_strg .= " ORDER BY pls.id DESC LIMIT ?";
                     
                     $stmt_strg = $conn->prepare($sql_strg);
                     if ($stmt_strg) {
-                            $params = [$shipping_id, $escaped_customer_name, $escaped_so_name, $sale_id, $escaped_client_order_ref, $product_id, $sale_line_id];
-                            if (!empty($odoo_barcode_list)) {
-                                $params = array_merge($params, $odoo_barcode_list);
-                            }
-                            $params[] = $still_needed;
-                            
-                            $types = "issisii" . str_repeat("s", count($odoo_barcode_list)) . "i";
+                            $params = [$shipping_id, $escaped_customer_name, $escaped_so_name, $sale_id, $escaped_client_order_ref, $product_id, $sale_line_id, $still_needed];
+                            $types = "issisiii";
                             $stmt_strg->bind_param($types, ...$params);
                         $stmt_strg->execute();
                         $result_strg = $stmt_strg->get_result();
@@ -295,7 +230,7 @@ foreach ($pickings as $picking) {
                                 ];
                             }
                         }
-                    }
+
                     
                     // STEP 3: Jika masih kurang, ambil dari barcode_item
                     $current_count = count($valid_barcodes);

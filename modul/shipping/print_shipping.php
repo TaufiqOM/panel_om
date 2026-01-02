@@ -111,9 +111,37 @@ foreach ($all_pickings as $picking_data) {
         }
     }
     
-    // Jika tidak ada lots dari Odoo, skip picking ini
+    // Jika tidak ada lots dari Odoo, ambil dari manual stuffing saja
     if (empty($picking_lots)) {
-        continue;
+        // Ambil production codes dari manual stuffing untuk picking ini
+        $sql_manual_picking = "SELECT DISTINCT sms.production_code 
+            FROM shipping_manual_stuffing sms
+            WHERE sms.id_shipping = ?
+            ORDER BY sms.production_code";
+        $stmt_manual_picking = $conn->prepare($sql_manual_picking);
+        $stmt_manual_picking->bind_param("i", $shipping_id);
+        $stmt_manual_picking->execute();
+        $result_manual_picking = $stmt_manual_picking->get_result();
+        
+        while ($manual_row = $result_manual_picking->fetch_assoc()) {
+            $lot_name = $manual_row['production_code'];
+            
+            // Cek apakah lot ini ada di all_manual_codes
+            if (in_array($lot_name, $all_manual_codes)) {
+                $picking_lots[] = [
+                    'lot_name' => $lot_name,
+                    'product_id' => 0, // Tidak ada product_id dari Odoo
+                    'product_name' => null, // Akan diambil dari local DB
+                    'qty_done' => 1
+                ];
+            }
+        }
+        $stmt_manual_picking->close();
+        
+        // Jika masih tidak ada data, skip picking ini
+        if (empty($picking_lots)) {
+            continue;
+        }
     }
     
     // Gunakan client_order_ref dari DB lokal sebagai sale order info
@@ -135,18 +163,19 @@ foreach ($all_pickings as $picking_data) {
             ];
         }
         
-        // Ambil data manual stuffing untuk lot ini
+        // Ambil data manual stuffing untuk lot ini, termasuk nama produk dari local DB
         $sql_manual_detail = "SELECT 
             sms.production_code,
             pls.sale_order_ref AS client_order_ref,
             COALESCE(bl.product_ref, bi_lot.product_ref) AS product_ref,
             COALESCE(bl.finishing, bi_lot.finishing) AS finishing,
+            COALESCE(bl.product_name, bi_lot.product_name) AS local_product_name,
             TIME(sms.created_at) AS created_time
         FROM shipping_manual_stuffing sms
         LEFT JOIN production_lots_strg pls ON pls.production_code = sms.production_code
         LEFT JOIN barcode_item bi ON bi.barcode = sms.production_code
         LEFT JOIN barcode_lot bi_lot ON bi_lot.id = bi.lot_id
-        LEFT JOIN barcode_lot bl ON bl.sale_order_ref = pls.sale_order_ref
+        LEFT JOIN barcode_lot bl ON bl.sale_order_ref = pls.sale_order_ref AND bl.product_id = pls.product_code
         WHERE sms.id_shipping = ? AND sms.production_code = ?
         LIMIT 1";
         
@@ -157,13 +186,25 @@ foreach ($all_pickings as $picking_data) {
         $manual_data = $result_detail->fetch_assoc();
         $stmt_detail->close();
         
+        // Gunakan nama produk dari Odoo jika tersedia (prioritas), fallback ke local DB
+        // Fix: Gunakan local_product_name jika tersedia, product_ref hanya sebagai fallback terakhir
+        $final_product_name = $lot['product_name'] ?? $manual_data['local_product_name'] ?? 'Unknown';
+        
+        // Update product_name di products_in_picking jika belum ada atau masih default
+        if (empty($products_in_picking[$product_id]['product_name']) || 
+            $products_in_picking[$product_id]['product_name'] === '-' || 
+            $products_in_picking[$product_id]['product_name'] === 'Unknown') {
+            $products_in_picking[$product_id]['product_name'] = $final_product_name;
+        }
+        
         $products_in_picking[$product_id]['items'][] = [
             'production_code' => $lot_name,
             'client_order_ref' => $manual_data['client_order_ref'] ?? $client_order_ref,
             'product_ref' => $manual_data['product_ref'] ?? null,
             'finishing' => $manual_data['finishing'] ?? null,
             'created_time' => $manual_data['created_time'] ?? '-',
-            'qty_done' => $lot['qty_done']
+            'qty_done' => $lot['qty_done'],
+            'local_product_name' => $final_product_name
         ];
     }
     
@@ -261,11 +302,15 @@ foreach ($structured_data as $picking_group) {
                 continue;
             }
             
+            // Gunakan product_name dari Odoo jika tersedia (prioritas), fallback ke local
+            // Ini sesuai dengan print_manual_stuffing.php
+            $item_product_name = $product['product_name'] ?? $item['local_product_name'] ?? 'Unknown';
+            
             $grouped_data[$group_key]['items'][] = [
                 'production_code' => $production_code,
                 'client_order_ref' => $item['client_order_ref'] ?? '',
                 'product_id' => $product_id,
-                'product_name' => $product['product_name'] ?? 'Unknown',
+                'product_name' => $item_product_name,
                 'product_ref' => $item['product_ref'] ?? null,
                 'finishing' => $item['finishing'] ?? null,
                 'created_time' => $item['created_time'] ?? '-'
@@ -274,6 +319,11 @@ foreach ($structured_data as $picking_group) {
             $grouped_data[$group_key]['qty']++;
             $grouped_data[$group_key]['tot_part']++;
             $used_codes[$production_code] = true;
+            
+            // Update product_name dengan local name jika tersedia
+            if (!empty($item_product_name) && $item_product_name !== 'Unknown') {
+                $grouped_data[$group_key]['product_name'] = $item_product_name;
+            }
             
             // Update finishing dan product_ref jika belum ada
             if (empty($grouped_data[$group_key]['finishing']) && !empty($item['finishing'])) {
@@ -307,18 +357,19 @@ $stmt_missing->close();
 // Tambahkan missing codes ke grouped_data
 if (!empty($missing_codes)) {
     foreach ($missing_codes as $production_code) {
-        // Ambil data manual stuffing untuk production code ini
+        // Ambil data manual stuffing untuk production code ini, termasuk nama produk
         $sql_manual_detail = "SELECT 
             sms.production_code,
             pls.sale_order_ref AS client_order_ref,
             COALESCE(bl.product_ref, bi_lot.product_ref) AS product_ref,
             COALESCE(bl.finishing, bi_lot.finishing) AS finishing,
+            COALESCE(bl.product_name, bi_lot.product_name) AS local_product_name,
             TIME(sms.created_at) AS created_time
         FROM shipping_manual_stuffing sms
         LEFT JOIN production_lots_strg pls ON pls.production_code = sms.production_code
         LEFT JOIN barcode_item bi ON bi.barcode = sms.production_code
         LEFT JOIN barcode_lot bi_lot ON bi_lot.id = bi.lot_id
-        LEFT JOIN barcode_lot bl ON bl.sale_order_ref = pls.sale_order_ref
+        LEFT JOIN barcode_lot bl ON bl.sale_order_ref = pls.sale_order_ref AND bl.product_id = pls.product_code
         WHERE sms.id_shipping = ? AND sms.production_code = ?
         LIMIT 1";
         
@@ -330,10 +381,21 @@ if (!empty($missing_codes)) {
         $stmt_detail->close();
         
         // Buat group key untuk produk yang tidak diketahui
-        // Group berdasarkan product_ref jika ada, atau per production_code jika tidak ada
+        // Prioritas: product_ref > local_product_name > 'Unknown Product'
+        // Untuk missing codes (tidak ada di Odoo), gunakan product_ref atau local name
         $product_ref = $manual_data['product_ref'] ?? null;
-        $product_name = $product_ref ?: 'Unknown Product';
-        $group_key = $product_ref ? "missing_product_" . md5($product_ref) : "missing_" . md5($production_code);
+        $local_product_name = $manual_data['local_product_name'] ?? null;
+        // Fix: Nama produk harusnya Nama, bukan Ref/Code. Prioritaskan local_product_name.
+        $product_name = $local_product_name ?: ($product_ref ?: 'Unknown Product');
+        
+        // Group berdasarkan product_ref atau product_name
+        if ($product_ref) {
+            $group_key = "missing_product_" . md5($product_ref);
+        } else if ($local_product_name) {
+            $group_key = "missing_product_" . md5($local_product_name);
+        } else {
+            $group_key = "missing_" . md5($production_code);
+        }
         
         if (!isset($grouped_data[$group_key])) {
             $grouped_data[$group_key] = [
@@ -403,6 +465,8 @@ error_log("=== M3 PREPARE: product_ids list: " . json_encode($product_ids_for_m3
 // Ambil data M3 dari Odoo langsung dari product.packaging berdasarkan product_id atau product_tmpl_id
 $m3_data = [];
 $product_id_to_default_code = []; // Mapping product_id -> default_code (inisialisasi di luar scope)
+$product_id_to_name = []; // Mapping product_id -> name (inisialisasi di luar scope)
+
 if (!empty($product_ids_for_m3)) {
     if (empty($username)) {
         error_log("=== M3 FETCH: Warning: Username tidak ditemukan di session, skip M3 fetch ===");
@@ -427,6 +491,11 @@ if (!empty($product_ids_for_m3)) {
                 if ($default_code) {
                     $product_id_to_default_code[$prod_id] = $default_code;
                     error_log("=== DEFAULT_CODE FETCH: Product ID: $prod_id, Default Code: $default_code ===");
+                }
+                
+                // Simpan real product name dari Odoo
+                if ($prod_name && $prod_name !== 'N/A') {
+                    $product_id_to_name[$prod_id] = $prod_name;
                 }
                 
                 // Ambil product_tmpl_id
@@ -558,6 +627,13 @@ foreach ($grouped_data as $group_key => &$product_data) {
             $product_data['tot_m3'] = 0;
             error_log("=== M3 ASSIGN: FAILED - Product ID $product_id ($product_name) tidak ada di m3_data. Available keys: " . json_encode(array_keys($m3_data)) . " ===");
         }
+        
+        // Update product_name dengan nama dari Odoo (jika ada) - Prioritas lebih tinggi daripada nama dari stock.move
+        if (isset($product_id_to_name[$product_id]) && !empty($product_id_to_name[$product_id])) {
+             $product_data['product_name'] = $product_id_to_name[$product_id];
+             error_log("=== PRODUCT_NAME UPDATE: Product ID $product_id - Name updated to: {$product_data['product_name']} ===");
+        }
+        
     } else {
         $product_data['m3'] = 0;
         $product_data['tot_m3'] = 0;
