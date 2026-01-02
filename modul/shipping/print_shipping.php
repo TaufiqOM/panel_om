@@ -1048,10 +1048,21 @@ error_log("=== M3 ASSIGN: Selesai assign M3 ===");
                 display: table-row-group;
             }
             
-            /* Pastikan setiap row tidak terpotong */
+            /* Pastikan setiap row tidak terpotong, KECUALI detail-row yang panjang */
             table.main-table tbody tr {
-                page-break-inside: avoid !important;
+                page-break-inside: auto;
                 page-break-after: auto;
+            }
+            
+            /* Product header harus tetap utuh */
+            table.main-table tbody tr.product-row {
+                page-break-inside: avoid !important;
+                page-break-after: avoid !important;
+            }
+            
+            /* Detail row boleh terpotong jika panjang */
+            table.main-table tbody tr.detail-row {
+                page-break-inside: auto !important;
             }
             
             /* Pastikan product-row dan detail-row selalu bersama - tidak terpisah */
@@ -1131,10 +1142,15 @@ error_log("=== M3 ASSIGN: Selesai assign M3 ===");
                 print-color-adjust: exact;
             }
             
-            /* Pastikan cell tidak terpotong */
+            /* Pastikan cell tidak terpotong SECARA UMUM, tapi detail-row HARUS bisa terpotong */
             table.main-table td {
                 page-break-inside: avoid !important;
                 vertical-align: top;
+            }
+
+            /* OVERRIDE: Cell di dalam detail-row BOLEH terpotong karena isinya tabel panjang */
+            tr.detail-row td {
+                page-break-inside: auto !important;
             }
             
             table.main-table th {

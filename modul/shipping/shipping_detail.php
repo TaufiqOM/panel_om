@@ -179,12 +179,9 @@ require_once __DIR__ . '/../../inc/config_odoo.php';
                                     </td>
                                     <td class="min-w-150px">
                                         <div class="d-flex gap-2 mb-2">
-                                            <a href="javascript:void(0);" class="btn-detail-shipping" 
-                                               data-id="<?= $row['id'] ?>" 
-                                               data-name="<?= htmlspecialchars($row['name']) ?>"
-                                               style="color: #000000; font-weight: 600; font-size: 0.9rem; text-decoration: none;">
+                                            <span style="color: #000000; font-weight: 600; font-size: 0.9rem;">
                                                 <?= htmlspecialchars($row['name']) ?>
-                                            </a>
+                                            </span>
                                         </div>
                                     </td>
                                     <td class="min-w-200px">
@@ -605,44 +602,7 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     });
 
-    // Handle detail shipping modal
-    const detailButtons = document.querySelectorAll(".btn-detail-shipping");
-    detailButtons.forEach(btn => {
-        btn.addEventListener("click", function() {
-            const shippingId = this.dataset.id;
-            const shippingName = this.dataset.name;
-            const modalBody = document.querySelector("#shippingDetailModal .modal-body");
-            const modalShippingName = document.getElementById("modalShippingName");
 
-            // Update Judul Modal
-            modalShippingName.textContent = "# " + shippingName;
-
-            modalBody.innerHTML = "<div class='text-center p-5'>Loading...</div>";
-
-            fetch("shipping/get_detail_shipping.php", {
-                    method: "POST",
-                    headers: {
-                        "Content-Type": "application/x-www-form-urlencoded"
-                    },
-                    body: "id=" + encodeURIComponent(shippingId)
-                })
-                .then(response => response.text())
-                .then(data => {
-                    modalBody.innerHTML = data;
-                    
-                    // Initialize buttons after content loaded
-                    initializeSyncShippingButton();
-                    initializeCompareButton();
-                })
-                .catch(err => {
-                    modalBody.innerHTML = "<div class='alert alert-danger'>Error load data</div>";
-                    console.error(err);
-                });
-
-            const modal = new bootstrap.Modal(document.getElementById("shippingDetailModal"));
-            modal.show();
-        });
-    });
 
     // Handle print shipping product
     const printShippingProductButtons = document.querySelectorAll(".btn-print-shipping-product");
