@@ -64,6 +64,7 @@ $order_groups = []; // picking_id => array of product entries
 $sale_order_cache = []; // Cache untuk sale.order data
 $product_cache = []; // Cache untuk product data
 $sale_line_cache = []; // Cache untuk sale.order.line data
+$all_fetched_barcodes = []; // Master list untuk melacak barcode yang sudah diambil dalam satu sesi print agar tidak dobel
 
 // Loop per picking untuk mengumpulkan data
 foreach ($pickings as $picking) {
@@ -184,19 +185,34 @@ foreach ($pickings as $picking) {
                                  AND pls.sale_order_line_id = ?
                                      AND sms.production_code IS NULL";
                         
+                    if (!empty($all_fetched_barcodes)) {
+                        $placeholders = str_repeat('?,', count($all_fetched_barcodes));
+                        $placeholders = rtrim($placeholders, ',');
+                        $sql_strg .= " AND pls.production_code NOT IN ($placeholders)";
+                    }
+                        
                     $sql_strg .= " ORDER BY pls.id DESC LIMIT ?";
                     
                     $stmt_strg = $conn->prepare($sql_strg);
                     if ($stmt_strg) {
-                            $params = [$shipping_id, $escaped_customer_name, $escaped_so_name, $sale_id, $escaped_client_order_ref, $product_id, $sale_line_id, $still_needed];
-                            $types = "issisiii";
+                            $params = [$shipping_id, $escaped_customer_name, $escaped_so_name, $sale_id, $escaped_client_order_ref, $product_id, $sale_line_id];
+                            if (!empty($all_fetched_barcodes)) {
+                                $params = array_merge($params, $all_fetched_barcodes);
+                            }
+                            $params[] = $still_needed;
+                            
+                            $types = "issisiii" . str_repeat("s", count($all_fetched_barcodes));
+                            // Reorder types because LIMIT stays at the end
+                            $types = "issisii" . str_repeat("s", count($all_fetched_barcodes)) . "i";
+                            
                             $stmt_strg->bind_param($types, ...$params);
                         $stmt_strg->execute();
                         $result_strg = $stmt_strg->get_result();
                         
                             $strg_barcodes = [];
                         while ($row = $result_strg->fetch_assoc()) {
-                                $strg_barcodes[] = $row['production_code'];
+                            $strg_barcodes[] = $row['production_code'];
+                            $all_fetched_barcodes[] = $row['production_code']; // Tambahkan ke master list
                         }
                         $stmt_strg->close();
                         
@@ -236,7 +252,7 @@ foreach ($pickings as $picking) {
                     $current_count = count($valid_barcodes);
                     if ($current_count < $needed_qty) {
                         $still_needed = $needed_qty - $current_count;
-                        $existing_barcodes = array_column($valid_barcodes, 'barcode');
+                        $existing_barcodes = $all_fetched_barcodes; // Gunakan master list untuk exclude
                         $existing_placeholders = str_repeat('?,', count($existing_barcodes));
                         $existing_placeholders = rtrim($existing_placeholders, ',');
                         
@@ -271,6 +287,7 @@ foreach ($pickings as $picking) {
                             $bi_barcodes = [];
                             while ($row = $result_bi->fetch_assoc()) {
                                 $bi_barcodes[] = $row['barcode'];
+                                $all_fetched_barcodes[] = $row['barcode']; // Tambahkan ke master list
                             }
                             $stmt_bi->close();
                             
