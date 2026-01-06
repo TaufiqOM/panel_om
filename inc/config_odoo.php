@@ -30,14 +30,14 @@ function odooConnectionInfo($username){
     $stmt->close();
 
     // Config Main Odoo (Production)
-    if ($result) {
-        return [
-            'url'      => 'https://om-omegamas.odoo.com/jsonrpc', //url odoo
-            'db'       => 'om-omegamas-main-17240508', // db odoo
-            'uid'      => (int)$result['uid'],
-            'password' => decrypt_password($result['password']),
-        ];
-    }
+    // if ($result) {
+    //     return [
+    //         'url'      => 'https://om-omegamas.odoo.com/jsonrpc', //url odoo
+    //         'db'       => 'om-omegamas-main-17240508', // db odoo
+    //         'uid'      => (int)$result['uid'],
+    //         'password' => decrypt_password($result['password']),
+    //     ];
+    // }
 
     // Config Staging Odoo
     // if ($result) {
@@ -50,14 +50,14 @@ function odooConnectionInfo($username){
     // }
 
     // Config Local Odoo (Active)
-    // if ($result) {
-    //     return [
-    //         'url'      => 'http://localhost:8069/jsonrpc', //url odoo local
-    //         'db'       => 'main', // db odoo local
-    //         'uid'      => (int)$result['uid'],
-    //         'password' => decrypt_password($result['password']),
-    //     ];
-    // }
+    if ($result) {
+        return [
+            'url'      => 'http://localhost:8069/jsonrpc', //url odoo local
+            'db'       => 'main', // db odoo local
+            'uid'      => (int)$result['uid'],
+            'password' => decrypt_password($result['password']),
+        ];
+    }
 
     return null;
 }

@@ -163,10 +163,13 @@ foreach ($all_pickings as $picking_data) {
             ];
         }
         
-        // Ambil data manual stuffing untuk lot ini, termasuk nama produk dari local DB
+        // Ambil data manual stuffing untuk lot ini, termasuk nama produk dan product_id dari local DB
+        // PENTING: Ambil product_id dari local database untuk identifikasi yang benar
         $sql_manual_detail = "SELECT 
             sms.production_code,
             pls.sale_order_ref AS client_order_ref,
+            pls.product_code AS local_product_id,
+            bi.product_id AS barcode_item_product_id,
             COALESCE(bl.product_ref, bi_lot.product_ref) AS product_ref,
             COALESCE(bl.finishing, bi_lot.finishing) AS finishing,
             COALESCE(bl.product_name, bi_lot.product_name) AS local_product_name,
@@ -186,9 +189,36 @@ foreach ($all_pickings as $picking_data) {
         $manual_data = $result_detail->fetch_assoc();
         $stmt_detail->close();
         
+        // IDENTIFIKASI PRODUCT_ID: Prioritas: Odoo > production_lots_strg.product_code > barcode_item.product_id
+        // Jika product_id dari Odoo tidak ada atau 0, gunakan dari local database
+        $local_product_id = null;
+        if (!empty($manual_data['local_product_id'])) {
+            $local_product_id = intval($manual_data['local_product_id']);
+        } else if (!empty($manual_data['barcode_item_product_id'])) {
+            $local_product_id = intval($manual_data['barcode_item_product_id']);
+        }
+        
+        // Gunakan product_id dari local database jika product_id dari Odoo tidak ada
+        if (empty($product_id) || $product_id == 0) {
+            if ($local_product_id) {
+                $product_id = $local_product_id;
+                // Update product_id di lot untuk konsistensi
+                $lot['product_id'] = $local_product_id;
+            }
+        }
+        
         // Gunakan nama produk dari Odoo jika tersedia (prioritas), fallback ke local DB
         // Fix: Gunakan local_product_name jika tersedia, product_ref hanya sebagai fallback terakhir
         $final_product_name = $lot['product_name'] ?? $manual_data['local_product_name'] ?? 'Unknown';
+        
+        // Pastikan product_id sudah benar sebelum grouping
+        if (!isset($products_in_picking[$product_id])) {
+            $products_in_picking[$product_id] = [
+                'product_id' => $product_id,
+                'product_name' => $final_product_name,
+                'items' => []
+            ];
+        }
         
         // Update product_name di products_in_picking jika belum ada atau masih default
         if (empty($products_in_picking[$product_id]['product_name']) || 
@@ -204,7 +234,8 @@ foreach ($all_pickings as $picking_data) {
             'finishing' => $manual_data['finishing'] ?? null,
             'created_time' => $manual_data['created_time'] ?? '-',
             'qty_done' => $lot['qty_done'],
-            'local_product_name' => $final_product_name
+            'local_product_name' => $final_product_name,
+            'product_id' => $product_id // Pastikan product_id disimpan di item
         ];
     }
     
@@ -272,12 +303,16 @@ foreach ($structured_data as $picking_group) {
 
 // Flatten untuk kompatibilitas dengan kode M3 yang sudah ada
 // Convert structured_data menjadi grouped_data format lama untuk M3 calculation
+// GROUPING BY PRODUCT ID - Semua produk dengan product_id yang sama akan di-group bersama
 $grouped_data = [];
 $used_codes = [];
 
 foreach ($structured_data as $picking_group) {
     foreach ($picking_group['products'] as $product) {
         $product_id = $product['product_id'] ?? 0;
+        
+        // GROUPING BY PRODUCT ID: Gunakan product_id sebagai group key utama
+        // Jika product_id ada, gunakan product_id. Jika tidak ada (0), gunakan hash dari nama sebagai fallback
         $group_key = $product_id ? "product_{$product_id}" : "name_" . md5($product['product_name'] ?? 'Unknown');
         
         if (!isset($grouped_data[$group_key])) {
@@ -357,10 +392,13 @@ $stmt_missing->close();
 // Tambahkan missing codes ke grouped_data
 if (!empty($missing_codes)) {
     foreach ($missing_codes as $production_code) {
-        // Ambil data manual stuffing untuk production code ini, termasuk nama produk
+        // Ambil data manual stuffing untuk production code ini, termasuk nama produk dan product_id
+        // PENTING: Ambil product_id dari local database untuk identifikasi yang benar
         $sql_manual_detail = "SELECT 
             sms.production_code,
             pls.sale_order_ref AS client_order_ref,
+            pls.product_code AS local_product_id,
+            bi.product_id AS barcode_item_product_id,
             COALESCE(bl.product_ref, bi_lot.product_ref) AS product_ref,
             COALESCE(bl.finishing, bi_lot.finishing) AS finishing,
             COALESCE(bl.product_name, bi_lot.product_name) AS local_product_name,
@@ -380,40 +418,63 @@ if (!empty($missing_codes)) {
         $manual_data = $result_detail->fetch_assoc();
         $stmt_detail->close();
         
-        // Buat group key untuk produk yang tidak diketahui
-        // Prioritas: product_ref > local_product_name > 'Unknown Product'
-        // Untuk missing codes (tidak ada di Odoo), gunakan product_ref atau local name
+        // IDENTIFIKASI PRODUCT_ID: Ambil dari local database (production_lots_strg.product_code atau barcode_item.product_id)
+        $local_product_id = null;
+        if (!empty($manual_data['local_product_id'])) {
+            $local_product_id = intval($manual_data['local_product_id']);
+        } else if (!empty($manual_data['barcode_item_product_id'])) {
+            $local_product_id = intval($manual_data['barcode_item_product_id']);
+        }
+        
         $product_ref = $manual_data['product_ref'] ?? null;
         $local_product_name = $manual_data['local_product_name'] ?? null;
         // Fix: Nama produk harusnya Nama, bukan Ref/Code. Prioritaskan local_product_name.
         $product_name = $local_product_name ?: ($product_ref ?: 'Unknown Product');
         
-        // Group berdasarkan product_ref atau product_name
-        if ($product_ref) {
-            $group_key = "missing_product_" . md5($product_ref);
-        } else if ($local_product_name) {
-            $group_key = "missing_product_" . md5($local_product_name);
+        // GROUPING BY PRODUCT ID: Gunakan product_id dari local database jika ada
+        // Jika ada product_id, group berdasarkan product_id. Jika tidak, gunakan fallback
+        if ($local_product_id && $local_product_id > 0) {
+            // GROUP BY PRODUCT ID: Gunakan product_id sebagai group key
+            $group_key = "product_{$local_product_id}";
         } else {
-            $group_key = "missing_" . md5($production_code);
+            // Fallback: Group berdasarkan product_ref atau product_name jika tidak ada product_id
+            if ($product_ref) {
+                $group_key = "missing_product_" . md5($product_ref);
+            } else if ($local_product_name) {
+                $group_key = "missing_product_" . md5($local_product_name);
+            } else {
+                $group_key = "missing_" . md5($production_code);
+            }
         }
         
         if (!isset($grouped_data[$group_key])) {
             $grouped_data[$group_key] = [
                 'items' => [],
-                'product_id' => 0,
+                'product_id' => $local_product_id ?: 0,
                 'product_name' => $product_name,
                 'product_ref' => $product_ref,
                 'finishing' => $manual_data['finishing'] ?? null,
                 'qty' => 0,
                 'tot_part' => 0,
-                'default_code' => null // Missing codes tidak punya product_id, jadi tidak bisa ambil default_code dari Odoo
+                'default_code' => null // Akan di-assign dari Odoo jika product_id ada
             ];
+        } else {
+            // Jika group sudah ada (misalnya dari Odoo), update product_id jika masih 0
+            if (empty($grouped_data[$group_key]['product_id']) && $local_product_id) {
+                $grouped_data[$group_key]['product_id'] = $local_product_id;
+            }
+            // Update product_name jika masih default atau kosong
+            if (empty($grouped_data[$group_key]['product_name']) || 
+                $grouped_data[$group_key]['product_name'] === 'Unknown' ||
+                $grouped_data[$group_key]['product_name'] === 'Unknown Product') {
+                $grouped_data[$group_key]['product_name'] = $product_name;
+            }
         }
         
         $grouped_data[$group_key]['items'][] = [
             'production_code' => $production_code,
             'client_order_ref' => $manual_data['client_order_ref'] ?? '',
-            'product_id' => 0,
+            'product_id' => $local_product_id ?: 0,
             'product_name' => $product_name,
             'product_ref' => $product_ref,
             'finishing' => $manual_data['finishing'] ?? null,
@@ -457,6 +518,7 @@ foreach ($grouped_data as &$group) {
 unset($group);
 
 // Sort grouped_data untuk display
+// GROUPING BY PRODUCT ID: Urutkan berdasarkan product_id terlebih dahulu
 // Logic: Group yang memiliki setidaknya SATU item dengan valid Picking/SO akan ditampilkan LEBIH DULU
 // Group yang semua itemnya "Picking/SO missing" akan ditampilkan DI BELAKANG
 uasort($grouped_data, function($a, $b) use ($code_to_picking_map) {
@@ -490,6 +552,25 @@ uasort($grouped_data, function($a, $b) use ($code_to_picking_map) {
     if ($has_valid_a && !$has_valid_b) return -1;
     if (!$has_valid_a && $has_valid_b) return 1;
 
+    // GROUPING BY PRODUCT ID: Sort by product_id first (products with same ID will be grouped together)
+    $product_id_a = $a['product_id'] ?? 0;
+    $product_id_b = $b['product_id'] ?? 0;
+    
+    // Products with product_id come first, then by product_id value
+    if ($product_id_a > 0 && $product_id_b > 0) {
+        // Both have product_id, sort by product_id
+        if ($product_id_a != $product_id_b) {
+            return $product_id_a <=> $product_id_b;
+        }
+    } else if ($product_id_a > 0 && $product_id_b == 0) {
+        // a has product_id, b doesn't - a comes first
+        return -1;
+    } else if ($product_id_a == 0 && $product_id_b > 0) {
+        // b has product_id, a doesn't - b comes first
+        return 1;
+    }
+    // Both don't have product_id, sort by product name
+    
     // By product name
     return strcmp($a['product_name'] ?? '', $b['product_name'] ?? '');
 });

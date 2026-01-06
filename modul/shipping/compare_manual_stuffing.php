@@ -46,7 +46,15 @@ if (!empty($picking_ids)) {
 $comparison_data = [];
 $total_product_uom_qty = 0; // Total product_uom_qty dari semua stock.move
 
-// Loop per picking untuk mengumpulkan data
+// Global barcode allocation tracker
+// Key: barcode, Value: array with picking_id, product_id, sale_line_id where it's allocated
+$globally_allocated_barcodes = [];
+
+// ====================================================================================
+// STEP 1: Kumpulkan semua data Odoo untuk semua picking
+// ====================================================================================
+$picking_data_map = []; // Key: picking_id, Value: array of picking data with moves
+
 foreach ($pickings as $picking) {
     $picking_id = $picking['id'];
     $picking_name = $picking['name'] ?? '';
@@ -73,174 +81,272 @@ foreach ($pickings as $picking) {
         continue;
     }
     
-        // Ambil moves dengan sale_line_id dan product_uom_qty
-        $moves = callOdooRead($username, 'stock.move', [['id', 'in', $move_ids]], ['id', 'product_id', 'product_uom_qty', 'sale_line_id', 'move_line_ids']);
-
-    $products = [];
-
-    if ($moves && is_array($moves)) {
-        foreach ($moves as $move) {
-            $move_id = $move['id'];
-            $product_id = is_array($move['product_id']) ? $move['product_id'][0] : null;
-            $product_name = is_array($move['product_id']) ? $move['product_id'][1] : 'N/A';
-            $sale_line_id = is_array($move['sale_line_id']) ? $move['sale_line_id'][0] : null;
-            $move_line_ids = $move['move_line_ids'] ?? [];
-
-            if (!$product_id || !$sale_line_id) {
-                continue;
-            }
-
-            // Ambil default_code dari product
-            $product_data = callOdooRead($username, 'product.product', [['id', '=', $product_id]], ['default_code', 'name']);
-            $default_code = '##';
-            if ($product_data && !empty($product_data)) {
-                $default_code = $product_data[0]['default_code'] ?? '##';
-                if (empty($product_name) || $product_name == 'N/A') {
-                    $product_name = $product_data[0]['name'] ?? $product_name;
-                }
-            }
-
-            // Ambil barcode dari Odoo (stock.move.line dengan lot_name)
-            $odoo_barcodes = [];
-            if (!empty($move_line_ids)) {
-                $move_lines = callOdooRead($username, 'stock.move.line', [['id', 'in', $move_line_ids]], ['lot_id', 'lot_name']);
-                
-                if ($move_lines && is_array($move_lines)) {
-                    foreach ($move_lines as $line) {
-                        $lot_name = null;
-                        
-                        // Try to get lot_name from lot_id field
-                        if (isset($line['lot_id']) && is_array($line['lot_id']) && count($line['lot_id']) >= 2) {
-                            $lot_name = $line['lot_id'][1];
-                        }
-                        // Fallback: try lot_name field
-                        else if (isset($line['lot_name']) && !empty($line['lot_name'])) {
-                            $lot_name = $line['lot_name'];
-                        }
-                        
-                        if ($lot_name && !empty($lot_name)) {
-                            $odoo_barcodes[] = $lot_name;
-                        }
-                    }
-                }
-            }
-
-            // Ambil barcode dari shipping_manual_stuffing yang sesuai dengan sale_order, picking, sale_order_line
-            // Cari melalui production_lots_strg atau barcode_item
-            $scanned_barcodes = [];
-            
-            // Method 1: Cari dari production_lots_strg
-            $sql_strg = "SELECT DISTINCT sms.production_code
-                        FROM shipping_manual_stuffing sms
-                        INNER JOIN production_lots_strg pls ON pls.production_code = sms.production_code
-                        WHERE sms.id_shipping = ?
-                        AND pls.sale_order_id = ?
-                        AND pls.product_code = ?
-                        AND pls.sale_order_line_id = ?
-                        ORDER BY sms.production_code";
-            
-            $stmt_strg = $conn->prepare($sql_strg);
-            if ($stmt_strg) {
-                $stmt_strg->bind_param("iiii", $shipping_id, $sale_id, $product_id, $sale_line_id);
-                $stmt_strg->execute();
-                $result_strg = $stmt_strg->get_result();
-                
-                while ($row = $result_strg->fetch_assoc()) {
-                    $scanned_barcodes[] = $row['production_code'];
-                }
-                $stmt_strg->close();
-            }
-            
-            // Method 2: Jika tidak ada di strg, cari dari barcode_item
-            if (empty($scanned_barcodes)) {
-                $sql_bi = "SELECT DISTINCT sms.production_code
-                          FROM shipping_manual_stuffing sms
-                          INNER JOIN barcode_item bi ON bi.barcode = sms.production_code
-                          WHERE sms.id_shipping = ?
-                          AND bi.sale_order_id = ?
-                          AND bi.product_id = ?
-                          AND bi.sale_order_line_id = ?
-                          ORDER BY sms.production_code";
-                
-                $stmt_bi = $conn->prepare($sql_bi);
-                if ($stmt_bi) {
-                    $stmt_bi->bind_param("iiii", $shipping_id, $sale_id, $product_id, $sale_line_id);
-                    $stmt_bi->execute();
-                    $result_bi = $stmt_bi->get_result();
-                    
-                    while ($row = $result_bi->fetch_assoc()) {
-                        $scanned_barcodes[] = $row['production_code'];
-                    }
-                    $stmt_bi->close();
-                }
-            }
-
-            // Ambil move_line_ids untuk sinkronisasi
-            $move_line_ids_for_sync = [];
-            if (!empty($move_line_ids)) {
-                $move_lines_for_sync = callOdooRead($username, 'stock.move.line', [['id', 'in', $move_line_ids]], ['id', 'lot_id', 'lot_name']);
-                if ($move_lines_for_sync && is_array($move_lines_for_sync)) {
-                    foreach ($move_lines_for_sync as $line) {
-                        $line_lot_name = null;
-                        if (isset($line['lot_id']) && is_array($line['lot_id']) && count($line['lot_id']) >= 2) {
-                            $line_lot_name = $line['lot_id'][1];
-                        } else if (isset($line['lot_name']) && !empty($line['lot_name'])) {
-                            $line_lot_name = $line['lot_name'];
-                        }
-                        if ($line_lot_name) {
-                            $move_line_ids_for_sync[] = [
-                                'id' => $line['id'],
-                                'lot_name' => $line_lot_name
-                            ];
-                        }
-                    }
-                }
-            }
-
-            // Bandingkan barcode
-            $matched_barcodes = array_intersect($odoo_barcodes, $scanned_barcodes);
-            $odoo_only = array_diff($odoo_barcodes, $scanned_barcodes);
-            $scanned_only = array_diff($scanned_barcodes, $odoo_barcodes);
-
-            // Ambil move_line_ids yang perlu dihapus (yang lot_name-nya ada di odoo_only)
-            $move_line_ids_to_delete = [];
-            foreach ($move_line_ids_for_sync as $move_line) {
-                if (in_array($move_line['lot_name'], $odoo_only)) {
-                    $move_line_ids_to_delete[] = $move_line['id'];
-                }
-            }
-
-            // Ambil product_uom_qty dari move
-            $product_uom_qty = intval($move['product_uom_qty'] ?? 0);
-            
-            // Tambahkan ke total product_uom_qty
-            $total_product_uom_qty += $product_uom_qty;
-            
-            $products[] = [
-                'product_id' => $product_id,
-                'product_name' => $product_name,
-                'default_code' => $default_code,
-                'sale_line_id' => $sale_line_id,
-                'move_id' => $move_id,
-                'picking_id' => $picking_id,
-                'product_uom_qty' => $product_uom_qty,
-                'odoo_barcodes' => $odoo_barcodes,
-                'scanned_barcodes' => $scanned_barcodes,
-                'matched_barcodes' => array_values($matched_barcodes),
-                'odoo_only' => array_values($odoo_only),
-                'scanned_only' => array_values($scanned_only),
-                'move_line_ids_to_delete' => $move_line_ids_to_delete,
-                'is_match' => !empty($matched_barcodes) && empty($odoo_only) && empty($scanned_only)
-            ];
-        }
+    // Ambil moves dengan sale_line_id dan product_uom_qty
+    $moves = callOdooRead($username, 'stock.move', [['id', 'in', $move_ids]], ['id', 'product_id', 'product_uom_qty', 'sale_line_id', 'move_line_ids']);
+    
+    if (!$moves || !is_array($moves)) {
+        continue;
     }
     
-    $comparison_data[] = [
+    // Store picking data
+    $picking_data_map[$picking_id] = [
         'picking_id' => $picking_id,
         'picking_name' => $picking_name,
         'sale_id' => $sale_id,
         'client_order_ref' => $client_order_ref,
         'so_name' => $so_name,
+        'moves' => []
+    ];
+    
+    // Process each move
+    foreach ($moves as $move) {
+        $move_id = $move['id'];
+        $product_id = is_array($move['product_id']) ? $move['product_id'][0] : null;
+        $product_name = is_array($move['product_id']) ? $move['product_id'][1] : 'N/A';
+        $sale_line_id = is_array($move['sale_line_id']) ? $move['sale_line_id'][0] : null;
+        $product_uom_qty = intval($move['product_uom_qty'] ?? 0);
+        $move_line_ids = $move['move_line_ids'] ?? [];
+
+        if (!$product_id || !$sale_line_id) {
+            continue;
+        }
+
+        // Ambil default_code dari product
+        $product_data = callOdooRead($username, 'product.product', [['id', '=', $product_id]], ['default_code', 'name']);
+        $default_code = '##';
+        if ($product_data && !empty($product_data)) {
+            $default_code = $product_data[0]['default_code'] ?? '##';
+            if (empty($product_name) || $product_name == 'N/A') {
+                $product_name = $product_data[0]['name'] ?? $product_name;
+            }
+        }
+
+        // Ambil barcode dari Odoo (stock.move.line dengan lot_name)
+        $odoo_barcodes = [];
+        if (!empty($move_line_ids)) {
+            $move_lines = callOdooRead($username, 'stock.move.line', [['id', 'in', $move_line_ids]], ['lot_id', 'lot_name']);
+            
+            if ($move_lines && is_array($move_lines)) {
+                foreach ($move_lines as $line) {
+                    $lot_name = null;
+                    
+                    if (isset($line['lot_id']) && is_array($line['lot_id']) && count($line['lot_id']) >= 2) {
+                        $lot_name = $line['lot_id'][1];
+                    } else if (isset($line['lot_name']) && !empty($line['lot_name'])) {
+                        $lot_name = $line['lot_name'];
+                    }
+                    
+                    if ($lot_name && !empty($lot_name)) {
+                        $odoo_barcodes[] = $lot_name;
+                    }
+                }
+            }
+        }
+
+        // Ambil barcode dari shipping_manual_stuffing
+        $all_potential_barcodes = [];
+        
+        // Method 1: Cari dari production_lots_strg
+        $sql_strg = "SELECT DISTINCT sms.production_code
+                    FROM shipping_manual_stuffing sms
+                    INNER JOIN production_lots_strg pls ON pls.production_code = sms.production_code
+                    WHERE sms.id_shipping = ?
+                    AND pls.sale_order_id = ?
+                    AND pls.product_code = ?
+                    AND pls.sale_order_line_id = ?
+                    ORDER BY sms.production_code";
+        
+        $stmt_strg = $conn->prepare($sql_strg);
+        if ($stmt_strg) {
+            $stmt_strg->bind_param("iiii", $shipping_id, $sale_id, $product_id, $sale_line_id);
+            $stmt_strg->execute();
+            $result_strg = $stmt_strg->get_result();
+            
+            while ($row = $result_strg->fetch_assoc()) {
+                $all_potential_barcodes[] = $row['production_code'];
+            }
+            $stmt_strg->close();
+        }
+        
+        // Method 2: Jika tidak ada di strg, cari dari barcode_item
+        if (empty($all_potential_barcodes)) {
+            $sql_bi = "SELECT DISTINCT sms.production_code
+                      FROM shipping_manual_stuffing sms
+                      INNER JOIN barcode_item bi ON bi.barcode = sms.production_code
+                      WHERE sms.id_shipping = ?
+                      AND bi.sale_order_id = ?
+                      AND bi.product_id = ?
+                      AND bi.sale_order_line_id = ?
+                      ORDER BY sms.production_code";
+            
+            $stmt_bi = $conn->prepare($sql_bi);
+            if ($stmt_bi) {
+                $stmt_bi->bind_param("iiii", $shipping_id, $sale_id, $product_id, $sale_line_id);
+                $stmt_bi->execute();
+                $result_bi = $stmt_bi->get_result();
+                
+                while ($row = $result_bi->fetch_assoc()) {
+                    $all_potential_barcodes[] = $row['production_code'];
+                }
+                $stmt_bi->close();
+            }
+        }
+        
+        // Add total product_uom_qty
+        $total_product_uom_qty += $product_uom_qty;
+        
+        // Store move data
+        $picking_data_map[$picking_id]['moves'][] = [
+            'move_id' => $move_id,
+            'product_id' => $product_id,
+            'product_name' => $product_name,
+            'default_code' => $default_code,
+            'sale_line_id' => $sale_line_id,
+            'product_uom_qty' => $product_uom_qty,
+            'move_line_ids' => $move_line_ids,
+            'odoo_barcodes' => $odoo_barcodes,
+            'all_potential_barcodes' => $all_potential_barcodes,
+            'scanned_barcodes' => [] // Will be filled in allocation passes
+        ];
+    }
+}
+
+// ====================================================================================
+// STEP 2: PASS 1 - Priority 1 allocation untuk SEMUA picking
+// Alokasikan barcode yang SUDAH ADA di Odoo untuk setiap picking
+// ====================================================================================
+foreach ($picking_data_map as $picking_id => &$picking_data) {
+    foreach ($picking_data['moves'] as &$move_data) {
+        $odoo_barcodes = $move_data['odoo_barcodes'];
+        $all_potential_barcodes = $move_data['all_potential_barcodes'];
+        
+        $allocated_count = 0;
+        foreach ($all_potential_barcodes as $barcode) {
+            // PRIORITY 1: Barcode yang ada di Odoo HARUS dialokasikan
+            if (in_array($barcode, $odoo_barcodes)) {
+                $move_data['scanned_barcodes'][] = $barcode;
+                
+                // Mark globally allocated
+                $globally_allocated_barcodes[$barcode] = [
+                    'picking_id' => $picking_id,
+                    'product_id' => $move_data['product_id'],
+                    'sale_line_id' => $move_data['sale_line_id']
+                ];
+                $allocated_count++;
+            }
+        }
+        
+        $move_data['allocated_count'] = $allocated_count;
+    }
+}
+unset($picking_data, $move_data); // Break references
+
+// ====================================================================================
+// STEP 3: PASS 2 - Priority 2 allocation untuk SEMUA picking
+// Alokasikan barcode baru sampai mencapai product_uom_qty
+// ====================================================================================
+foreach ($picking_data_map as $picking_id => &$picking_data) {
+    foreach ($picking_data['moves'] as &$move_data) {
+        $all_potential_barcodes = $move_data['all_potential_barcodes'];
+        $product_uom_qty = $move_data['product_uom_qty'];
+        $allocated_count = $move_data['allocated_count'];
+        
+        foreach ($all_potential_barcodes as $barcode) {
+            // Skip if already allocated
+            if (isset($globally_allocated_barcodes[$barcode])) {
+                continue;
+            }
+            
+            // Limit to product_uom_qty
+            if ($allocated_count >= $product_uom_qty) {
+                break;
+            }
+            
+            // Allocate barcode
+            $move_data['scanned_barcodes'][] = $barcode;
+            $globally_allocated_barcodes[$barcode] = [
+                'picking_id' => $picking_id,
+                'product_id' => $move_data['product_id'],
+                'sale_line_id' => $move_data['sale_line_id']
+            ];
+            $allocated_count++;
+        }
+        
+        $move_data['allocated_count'] = $allocated_count;
+    }
+}
+unset($picking_data, $move_data); // Break references
+
+// ====================================================================================
+// STEP 4: Build comparison_data dari picking_data_map
+// ====================================================================================
+foreach ($picking_data_map as $picking_id => $picking_data) {
+    $products = [];
+    
+    foreach ($picking_data['moves'] as $move_data) {
+        $scanned_barcodes = $move_data['scanned_barcodes'];
+        $odoo_barcodes = $move_data['odoo_barcodes'];
+        $move_line_ids = $move_data['move_line_ids'];
+        
+        // Ambil move_line_ids untuk sinkronisasi
+        $move_line_ids_for_sync = [];
+        if (!empty($move_line_ids)) {
+            $move_lines_for_sync = callOdooRead($username, 'stock.move.line', [['id', 'in', $move_line_ids]], ['id', 'lot_id', 'lot_name']);
+            if ($move_lines_for_sync && is_array($move_lines_for_sync)) {
+                foreach ($move_lines_for_sync as $line) {
+                    $line_lot_name = null;
+                    if (isset($line['lot_id']) && is_array($line['lot_id']) && count($line['lot_id']) >= 2) {
+                        $line_lot_name = $line['lot_id'][1];
+                    } else if (isset($line['lot_name']) && !empty($line['lot_name'])) {
+                        $line_lot_name = $line['lot_name'];
+                    }
+                    if ($line_lot_name) {
+                        $move_line_ids_for_sync[] = [
+                            'id' => $line['id'],
+                            'lot_name' => $line_lot_name
+                        ];
+                    }
+                }
+            }
+        }
+        
+        // Bandingkan barcode
+        $matched_barcodes = array_intersect($odoo_barcodes, $scanned_barcodes);
+        $odoo_only = array_diff($odoo_barcodes, $scanned_barcodes);
+        $scanned_only = array_diff($scanned_barcodes, $odoo_barcodes);
+        
+        // Ambil move_line_ids yang perlu dihapus
+        $move_line_ids_to_delete = [];
+        foreach ($move_line_ids_for_sync as $move_line) {
+            if (in_array($move_line['lot_name'], $odoo_only)) {
+                $move_line_ids_to_delete[] = $move_line['id'];
+            }
+        }
+        
+        $products[] = [
+            'product_id' => $move_data['product_id'],
+            'product_name' => $move_data['product_name'],
+            'default_code' => $move_data['default_code'],
+            'sale_line_id' => $move_data['sale_line_id'],
+            'move_id' => $move_data['move_id'],
+            'picking_id' => $picking_id,
+            'product_uom_qty' => $move_data['product_uom_qty'],
+            'odoo_barcodes' => $odoo_barcodes,
+            'scanned_barcodes' => $scanned_barcodes,
+            'matched_barcodes' => array_values($matched_barcodes),
+            'odoo_only' => array_values($odoo_only),
+            'scanned_only' => array_values($scanned_only),
+            'move_line_ids_to_delete' => $move_line_ids_to_delete,
+            'is_match' => !empty($matched_barcodes) && empty($odoo_only) && empty($scanned_only)
+        ];
+    }
+    
+    $comparison_data[] = [
+        'picking_id' => $picking_id,
+        'picking_name' => $picking_data['picking_name'],
+        'sale_id' => $picking_data['sale_id'],
+        'client_order_ref' => $picking_data['client_order_ref'],
+        'so_name' => $picking_data['so_name'],
         'products' => $products
     ];
 }
@@ -461,6 +567,8 @@ foreach ($product_qty_map as $key => $data) {
           <?php if (!empty($comparison_data)): ?>
             <?php
             $row_index = 0;
+            $has_any_picking_mismatch = false; // Flag untuk cek apakah ada picking yang tidak cocok
+            
             foreach ($comparison_data as $picking):
               // Hitung status per picking
               $all_match = true;
@@ -469,6 +577,7 @@ foreach ($product_qty_map as $key => $data) {
                   if (!$product['is_match']) {
                       $all_match = false;
                       $has_mismatch = true;
+                      $has_any_picking_mismatch = true; // Set flag jika ada picking yang tidak cocok
                       break;
                   }
               }
@@ -686,7 +795,7 @@ foreach ($product_qty_map as $key => $data) {
             </div>
           </div>
         </div>
-        <?php if ($total_mismatch > 0): ?>
+        <?php if (isset($has_any_picking_mismatch) && $has_any_picking_mismatch): ?>
         <div>
           <button class="btn btn-primary btn-sm btn-sync-compare" id="btnSyncCompare" data-shipping-id="<?= $shipping_id ?>">
             <i class="ki-duotone ki-arrows-circle fs-5 me-1">
@@ -700,7 +809,7 @@ foreach ($product_qty_map as $key => $data) {
       </div>
     </div>
     
-    <?php if ($total_mismatch > 0): ?>
+    <?php if (isset($has_any_picking_mismatch) && $has_any_picking_mismatch): ?>
     <div class="alert alert-warning d-flex align-items-center p-2">
       <i class="ki-duotone ki-information fs-2 text-warning me-2">
         <span class="path1"></span>
@@ -790,7 +899,12 @@ foreach ($product_qty_map as $key => $data) {
     <?php endif; ?>
     
     <!-- Barcode yang Melebihi Jumlah Product -->
-    <?php if (!empty($excess_barcodes)): ?>
+    <!-- Tampilkan jika: 
+         1. Ada barcode yang tidak ter-map ke picking manapun (tidak ada SO/SOL yang cocok)
+         ATAU
+         2. TOTAL terscan > TOTAL direncanakan 
+    -->
+    <?php if (!empty($excess_barcodes) && (!empty($unmapped_barcodes) || $total_scanned_barcodes > $total_product_uom_qty)): ?>
     <div class="separator my-4"></div>
     
     <div class="card shadow-sm border-warning">
@@ -885,96 +999,156 @@ window.syncCompareManualStuffing = function(btn) {
     const shippingId = btn.dataset.shippingId;
     
     if (!shippingId) {
-        alert('✗ Error: Shipping ID tidak ditemukan');
+        Swal.fire({
+            icon: 'error',
+            title: 'Error',
+            text: 'Shipping ID tidak ditemukan',
+            confirmButtonColor: '#F1416C'
+        });
         return;
     }
     
-    if (!confirm('Apakah Anda yakin ingin melakukan sinkronisasi?\n\nProses ini akan:\n1. Menghapus barcode yang hanya ada di Odoo (tidak ada di scan)\n2. Menambahkan barcode yang sudah di scan tapi belum ada di Odoo')) {
-        return;
-    }
-    
-    const originalHTML = btn.innerHTML;
-    btn.disabled = true;
-    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Memproses...';
-    
-    fetch('shipping/sync_compare_manual_stuffing.php', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/x-www-form-urlencoded',
-        },
-        body: 'shipping_id=' + encodeURIComponent(shippingId)
-    })
-    .then(response => {
-        console.log('Response status:', response.status);
-        if (!response.ok) {
-            return response.text().then(text => {
-                console.error('Error response:', text);
-                throw new Error('HTTP error! status: ' + response.status + ', body: ' + text);
-            });
+    // Show confirmation modal using SweetAlert
+    Swal.fire({
+        title: 'Konfirmasi Sinkronisasi',
+        html: '<div class="text-start">' +
+              '<p class="mb-3">Apakah Anda yakin ingin melakukan sinkronisasi?</p>' +
+              '<div class="alert alert-light-warning d-flex align-items-start p-3">' +
+              '<i class="ki-duotone ki-information fs-2 text-warning me-3"><span class="path1"></span><span class="path2"></span><span class="path3"></span></i>' +
+              '<div class="fs-7">' +
+              '<strong>Proses ini akan:</strong>' +
+              '<ol class="mb-0 mt-2 ps-3">' +
+              '<li>Menghapus barcode yang hanya ada di Odoo (tidak ada di scan)</li>' +
+              '<li>Menambahkan barcode yang sudah di scan tapi belum ada di Odoo</li>' +
+              '</ol>' +
+              '</div>' +
+              '</div>' +
+              '</div>',
+        icon: 'question',
+        showCancelButton: true,
+        confirmButtonText: '<i class="ki-duotone ki-check fs-3 me-1"><span class="path1"></span><span class="path2"></span></i> Ya, Sinkronkan',
+        cancelButtonText: '<i class="ki-duotone ki-cross fs-3 me-1"><span class="path1"></span><span class="path2"></span></i> Batal',
+        confirmButtonColor: '#50CD89',
+        cancelButtonColor: '#F1416C',
+        reverseButtons: true,
+        allowOutsideClick: false,
+        customClass: {
+            confirmButton: 'btn btn-success',
+            cancelButton: 'btn btn-danger'
         }
-        return response.json();
-    })
-    .then(data => {
-        console.log('Response data:', data);
-        btn.disabled = false;
-        btn.innerHTML = originalHTML;
+    }).then((result) => {
+        if (!result.isConfirmed) {
+            return;
+        }
         
-        if (data && data.success) {
-            // Gunakan SweetAlert jika tersedia, jika tidak gunakan alert biasa
-            if (typeof Swal !== 'undefined') {
-                Swal.fire({
-                    icon: 'success',
-                    title: 'Berhasil!',
-                    text: data.message || 'Berhasil melakukan sinkronisasi',
-                    confirmButtonText: 'OK',
-                    confirmButtonColor: '#50CD89'
-                }).then(() => {
-                    // Reload compare setelah user klik OK
+        // User confirmed, proceed with sync
+        const originalHTML = btn.innerHTML;
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Memproses...';
+        
+        fetch('shipping/sync_compare_manual_stuffing.php', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+            },
+            body: 'shipping_id=' + encodeURIComponent(shippingId)
+        })
+        .then(response => {
+            console.log('Response status:', response.status);
+            if (!response.ok) {
+                return response.text().then(text => {
+                    console.error('Error response:', text);
+                    throw new Error('HTTP error! status: ' + response.status + ', body: ' + text);
+                });
+            }
+            return response.json();
+        })
+        .then(data => {
+            console.log('Response data:', data);
+            btn.disabled = false;
+            btn.innerHTML = originalHTML;
+            
+            if (data && data.success) {
+                // Gunakan SweetAlert jika tersedia, jika tidak gunakan alert biasa
+                if (typeof Swal !== 'undefined') {
+                    Swal.fire({
+                        icon: 'success',
+                        title: 'Berhasil!',
+                        text: data.message || 'Berhasil melakukan sinkronisasi',
+                        confirmButtonText: 'OK',
+                        confirmButtonColor: '#50CD89'
+                    }).then(() => {
+                        // AGGRESSIVE CLEANUP - tutup semua modal dan hapus backdrop
+                        
+                        // 1. Close SweetAlert explicitly
+                        Swal.close();
+                        
+                        // 2. Hapus semua elemen backdrop SweetAlert
+                        document.querySelectorAll('.swal2-container, .swal2-backdrop-show').forEach(el => el.remove());
+                        
+                        // 3. Hapus backdrop Bootstrap modal (INI YANG PALING PENTING!)
+                        document.querySelectorAll('.modal-backdrop').forEach(el => el.remove());
+                        
+                        // 4. Hapus semua class dari body dan html
+                        document.body.classList.remove('swal2-shown', 'swal2-height-auto', 'modal-open');
+                        document.documentElement.classList.remove('swal2-shown', 'swal2-height-auto');
+                        
+                        // 5. Reset inline styles
+                        document.body.style.removeProperty('padding-right');
+                        document.body.style.removeProperty('overflow');
+                        
+                        // 6. Reset scroll
+                        window.scrollTo(0, document.body.scrollTop || document.documentElement.scrollTop);
+                        
+                        // 7. Reload compare dengan delay
+                        setTimeout(() => {
+                            const compareButton = document.querySelector('.btn-compare-manual-stuffing[data-id="' + shippingId + '"]');
+                            if (compareButton) {
+                                compareButton.click();
+                            }
+                        }, 300);
+                    });
+                } else {
+                    alert('✓ ' + (data.message || 'Berhasil melakukan sinkronisasi'));
+                    // Reload compare
                     const compareButton = document.querySelector('.btn-compare-manual-stuffing[data-id="' + shippingId + '"]');
                     if (compareButton) {
                         compareButton.click();
                     }
-                });
+                }
             } else {
-                alert('✓ ' + (data.message || 'Berhasil melakukan sinkronisasi'));
-                // Reload compare
-                const compareButton = document.querySelector('.btn-compare-manual-stuffing[data-id="' + shippingId + '"]');
-                if (compareButton) {
-                    compareButton.click();
+                // Gunakan SweetAlert untuk error juga jika tersedia
+                if (typeof Swal !== 'undefined') {
+                    Swal.fire({
+                        icon: 'error',
+                        title: 'Error',
+                        text: data.message || 'Terjadi kesalahan saat sinkronisasi',
+                        confirmButtonText: 'OK',
+                        confirmButtonColor: '#F1416C'
+                    });
+                } else {
+                    alert('✗ Error: ' + (data.message || 'Terjadi kesalahan saat sinkronisasi'));
                 }
             }
-        } else {
-            // Gunakan SweetAlert untuk error juga jika tersedia
+        })
+        .catch(error => {
+            console.error('Fetch error:', error);
+            btn.disabled = false;
+            btn.innerHTML = originalHTML;
+            // Gunakan SweetAlert untuk error jika tersedia
             if (typeof Swal !== 'undefined') {
                 Swal.fire({
                     icon: 'error',
                     title: 'Error',
-                    text: data.message || 'Terjadi kesalahan saat sinkronisasi',
+                    text: error.message || 'Terjadi kesalahan saat sinkronisasi',
                     confirmButtonText: 'OK',
                     confirmButtonColor: '#F1416C'
                 });
             } else {
-                alert('✗ Error: ' + (data.message || 'Terjadi kesalahan saat sinkronisasi'));
+                alert('✗ Error: ' + (error.message || 'Terjadi kesalahan saat sinkronisasi'));
             }
-        }
-    })
-    .catch(error => {
-        console.error('Fetch error:', error);
-        btn.disabled = false;
-        btn.innerHTML = originalHTML;
-        // Gunakan SweetAlert untuk error jika tersedia
-        if (typeof Swal !== 'undefined') {
-            Swal.fire({
-                icon: 'error',
-                title: 'Error',
-                text: error.message || 'Terjadi kesalahan saat sinkronisasi',
-                confirmButtonText: 'OK',
-                confirmButtonColor: '#F1416C'
-            });
-        } else {
-            alert('✗ Error: ' + (error.message || 'Terjadi kesalahan saat sinkronisasi'));
-        }
-    });
+        });
+    }); // Close Swal.fire().then()
 };
 
 // Attach event listener untuk tombol sinkron setelah script di-load

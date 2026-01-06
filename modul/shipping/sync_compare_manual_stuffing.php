@@ -122,7 +122,16 @@ try {
         }
     }
     
-    // Loop per picking untuk sinkronisasi
+    // =======================================================================================
+    // PASS 1: Collect all barcodes and group by sale_order + product + sale_line combination
+    // =======================================================================================
+    
+    // Structure: $product_barcode_groups[key] = ['barcodes' => [], 'pickings' => []]
+    // Key format: "sale_id_product_id_sale_line_id"
+    $product_barcode_groups = [];
+    
+    error_log("=== PASS 1: Collecting barcodes and grouping by product/sale_line ===");
+    
     foreach ($pickings as $picking) {
         $picking_id = $picking['id'];
         $picking_name = $picking['name'] ?? '';
@@ -150,6 +159,7 @@ try {
                 $sale_line_id = is_array($move['sale_line_id']) ? $move['sale_line_id'][0] : null;
                 $move_line_ids = $move['move_line_ids'] ?? [];
                 $product_uom_id = is_array($move['product_uom']) ? $move['product_uom'][0] : 1;
+                $product_uom_qty = intval($move['product_uom_qty'] ?? 0);
                 $location_id = is_array($move['location_id']) ? $move['location_id'][0] : ($move['location_id'] ?? null);
                 $location_dest_id = is_array($move['location_dest_id']) ? $move['location_dest_id'][0] : ($move['location_dest_id'] ?? null);
                 
@@ -161,25 +171,18 @@ try {
                     continue;
                 }
                 
-                // Ambil barcode yang sudah ada di Odoo untuk move ini
-                $existing_barcodes = [];
-                if (!empty($move_line_ids)) {
-                    $existing_move_lines = callOdooRead($username, 'stock.move.line', [['id', 'in', $move_line_ids]], ['lot_id']);
-                    if ($existing_move_lines && is_array($existing_move_lines)) {
-                        foreach ($existing_move_lines as $move_line) {
-                            $lot_id = is_array($move_line['lot_id']) ? $move_line['lot_id'][0] : $move_line['lot_id'];
-                            if ($lot_id) {
-                                // Ambil nama lot (barcode) dari Odoo
-                                $lot_info = callOdooRead($username, 'stock.lot', [['id', '=', $lot_id]], ['name']);
-                                if ($lot_info && !empty($lot_info)) {
-                                    $existing_barcodes[] = $lot_info[0]['name'];
-                                }
-                            }
-                        }
-                    }
+                // Create grouping key
+                $group_key = "{$sale_id}_{$product_id}_{$sale_line_id}";
+                
+                // Initialize group if not exists
+                if (!isset($product_barcode_groups[$group_key])) {
+                    $product_barcode_groups[$group_key] = [
+                        'barcodes' => [],
+                        'pickings' => []
+                    ];
                 }
                 
-                // Ambil barcode dari shipping_manual_stuffing
+                // Ambil barcode dari shipping_manual_stuffing untuk produk ini
                 $scanned_barcodes = [];
                 
                 // Method 1: Cari dari production_lots_strg
@@ -228,72 +231,176 @@ try {
                     }
                 }
                 
-                // Filter barcode yang belum ada di Odoo (untuk di-insert)
-                $barcodes_to_insert = [];
-                foreach ($scanned_barcodes as $barcode) {
-                    // Skip jika barcode ini sudah di-insert sebelumnya (hindari duplikasi)
-                    if (isset($inserted_barcodes_tracker[$barcode])) {
-                        continue;
-                    }
-                    // Hanya insert yang belum ada di Odoo
-                    if (!in_array($barcode, $existing_barcodes)) {
-                        $barcodes_to_insert[] = $barcode;
-                    }
-                }
+                // Add barcodes to group (merge and make unique)
+                $product_barcode_groups[$group_key]['barcodes'] = array_unique(array_merge(
+                    $product_barcode_groups[$group_key]['barcodes'],
+                    $scanned_barcodes
+                ));
                 
-                // Insert barcode yang belum ada ke Odoo sebagai move_line
-                $move_line_count_for_this_move = count($existing_barcodes); // Hitung dari yang sudah ada
-                foreach ($barcodes_to_insert as $barcode) {
-                    // Skip jika barcode ini sudah di-insert sebelumnya (hindari duplikasi)
-                    if (isset($inserted_barcodes_tracker[$barcode])) {
-                        error_log("Barcode $barcode sudah di-insert sebelumnya, skip untuk menghindari duplikasi");
-                        continue;
-                    }
-                    
-                    // Ambil lot_id dari Odoo berdasarkan barcode
-                    $lot_data = callOdooRead($username, 'stock.lot', [['name', '=', $barcode]], ['id']);
-                    if (!$lot_data || empty($lot_data)) {
-                        $errors[] = "Lot tidak ditemukan di Odoo untuk barcode: $barcode";
-                        error_log("Lot tidak ditemukan di Odoo untuk barcode: $barcode");
-                        continue;
-                    }
-                    
-                    $lot_id = $lot_data[0]['id'];
-                    
-                    // Create move line data
-                    $move_line_data = [
-                        'move_id' => $move_id,
-                        'picking_id' => $picking_id,
-                        'product_id' => $product_id,
-                        'lot_id' => $lot_id,
-                        'qty_done' => 1,
-                        'product_uom_id' => $product_uom_id,
-                        'location_id' => $location_id,
-                        'location_dest_id' => $location_dest_id
-                    ];
-                    
-                    $create_result = callOdooCreate($username, 'stock.move.line', $move_line_data);
-                    
-                    if ($create_result !== false && $create_result > 0) {
-                        $total_inserted++;
-                        $move_line_count_for_this_move++;
-                        // Mark barcode sebagai sudah di-insert
-                        $inserted_barcodes_tracker[$barcode] = true;
-                        // Mark move_id untuk di-uncheck picked
-                        $moves_to_uncheck_picked[$move_id] = true;
-                        error_log("Berhasil create move line untuk barcode: $barcode (picking: $picking_id, move: $move_id)");
-                    } else {
-                        $error_msg = "Gagal create move line untuk barcode: $barcode (picking: $picking_id, move: $move_id)";
-                        $errors[] = $error_msg;
-                        error_log($error_msg);
-                    }
-                }
+                // Add picking info to group
+                $product_barcode_groups[$group_key]['pickings'][] = [
+                    'picking_id' => $picking_id,
+                    'picking_name' => $picking_name,
+                    'move_id' => $move_id,
+                    'product_id' => $product_id,
+                    'product_uom_qty' => $product_uom_qty,
+                    'sale_id' => $sale_id,
+                    'sale_line_id' => $sale_line_id,
+                    'product_uom_id' => $product_uom_id,
+                    'location_id' => $location_id,
+                    'location_dest_id' => $location_dest_id,
+                    'move_line_ids' => $move_line_ids
+                ];
                 
-                // Simpan quantity berdasarkan jumlah barcode (existing + yang berhasil di-insert)
-                if ($move_line_count_for_this_move > 0) {
-                    $move_quantity_map[$move_id] = $move_line_count_for_this_move;
+                error_log("Group $group_key: Added picking $picking_name (qty: $product_uom_qty), total barcodes: " . count($product_barcode_groups[$group_key]['barcodes']));
+            }
+        }
+    }
+    
+    // =======================================================================================
+    // PASS 2: Allocate barcodes to pickings based on product_uom_qty priority
+    // =======================================================================================
+    
+    // Structure: $barcode_allocation_map[picking_id_move_id] = [barcodes array]
+    $barcode_allocation_map = [];
+    
+    error_log("=== PASS 2: Allocating barcodes to pickings based on priority ===");
+    
+    foreach ($product_barcode_groups as $group_key => $group) {
+        $all_barcodes = $group['barcodes'];
+        $pickings_info = $group['pickings'];
+        
+        error_log("Processing group $group_key with " . count($all_barcodes) . " barcodes across " . count($pickings_info) . " pickings");
+        
+        $barcode_index = 0;
+        
+        // Allocate to each picking based on product_uom_qty
+        foreach ($pickings_info as $picking_info) {
+            $qty_needed = $picking_info['product_uom_qty'];
+            $allocated_barcodes = [];
+            
+            // Allocate up to qty_needed barcodes
+            for ($i = 0; $i < $qty_needed && $barcode_index < count($all_barcodes); $i++) {
+                $allocated_barcodes[] = $all_barcodes[$barcode_index];
+                $barcode_index++;
+            }
+            
+            $map_key = "{$picking_info['picking_id']}_{$picking_info['move_id']}";
+            $barcode_allocation_map[$map_key] = [
+                'barcodes' => $allocated_barcodes,
+                'picking_info' => $picking_info
+            ];
+            
+            error_log("Allocated " . count($allocated_barcodes) . " barcodes to picking {$picking_info['picking_name']} (move: {$picking_info['move_id']})");
+        }
+        
+        // If there are remaining barcodes (overflow), allocate to LAST picking
+        if ($barcode_index < count($all_barcodes)) {
+            $remaining_count = count($all_barcodes) - $barcode_index;
+            $last_picking = end($pickings_info);
+            $map_key = "{$last_picking['picking_id']}_{$last_picking['move_id']}";
+            
+            // Add remaining barcodes to the last picking (even if exceeds qty)
+            for ($i = $barcode_index; $i < count($all_barcodes); $i++) {
+                $barcode_allocation_map[$map_key]['barcodes'][] = $all_barcodes[$i];
+            }
+            
+            error_log("OVERFLOW: Allocated $remaining_count extra barcodes to LAST picking {$last_picking['picking_name']} (move: {$last_picking['move_id']})");
+        }
+    }
+    
+    // =======================================================================================
+    // PASS 3: Create move lines based on allocation map
+    // =======================================================================================
+    
+    error_log("=== PASS 3: Creating move lines in Odoo based on allocation ===");
+    
+    foreach ($barcode_allocation_map as $map_key => $allocation_data) {
+        $allocated_barcodes = $allocation_data['barcodes'];
+        $picking_info = $allocation_data['picking_info'];
+        
+        $move_id = $picking_info['move_id'];
+        $picking_id = $picking_info['picking_id'];
+        $product_id = $picking_info['product_id'];
+        $product_uom_id = $picking_info['product_uom_id'];
+        $location_id = $picking_info['location_id'];
+        $location_dest_id = $picking_info['location_dest_id'];
+        
+        // Get existing barcodes in Odoo for this move
+        $existing_barcodes = [];
+        $move_line_ids = $picking_info['move_line_ids'] ?? [];
+        
+        if (!empty($move_line_ids)) {
+            $existing_move_lines = callOdooRead($username, 'stock.move.line', [['id', 'in', $move_line_ids]], ['lot_id']);
+            if ($existing_move_lines && is_array($existing_move_lines)) {
+                foreach ($existing_move_lines as $move_line) {
+                    $lot_id = is_array($move_line['lot_id']) ? $move_line['lot_id'][0] : $move_line['lot_id'];
+                    if ($lot_id) {
+                        $lot_info = callOdooRead($username, 'stock.lot', [['id', '=', $lot_id]], ['name']);
+                        if ($lot_info && !empty($lot_info)) {
+                            $existing_barcodes[] = $lot_info[0]['name'];
+                        }
+                    }
                 }
             }
+        }
+        
+        // Filter: only insert barcodes not in Odoo and not already inserted
+        $move_line_count = count($existing_barcodes);
+        
+        foreach ($allocated_barcodes as $barcode) {
+            // Skip if already in Odoo
+            if (in_array($barcode, $existing_barcodes)) {
+                $move_line_count++;
+                continue;
+            }
+            
+            // Skip if already inserted (avoid duplicates)
+            if (isset($inserted_barcodes_tracker[$barcode])) {
+                error_log("Barcode $barcode already inserted, skipping");
+                continue;
+            }
+            
+            // Get lot_id from Odoo
+            $lot_data = callOdooRead($username, 'stock.lot', [['name', '=', $barcode]], ['id']);
+            if (!$lot_data || empty($lot_data)) {
+                $errors[] = "Lot tidak ditemukan di Odoo untuk barcode: $barcode";
+                error_log("Lot not found for barcode: $barcode");
+                continue;
+            }
+            
+            $lot_id = $lot_data[0]['id'];
+            
+            // Create move line
+            $move_line_data = [
+                'move_id' => $move_id,
+                'picking_id' => $picking_id,
+                'product_id' => $product_id,
+                'lot_id' => $lot_id,
+                'qty_done' => 1,
+                'product_uom_id' => $product_uom_id,
+                'location_id' => $location_id,
+                'location_dest_id' => $location_dest_id
+            ];
+            
+            $create_result = callOdooCreate($username, 'stock.move.line', $move_line_data);
+            
+            if ($create_result !== false && $create_result > 0) {
+                $total_inserted++;
+                $move_line_count++;
+                $inserted_barcodes_tracker[$barcode] = true;
+                $moves_to_uncheck_picked[$move_id] = true;
+                error_log("Created move line for barcode: $barcode (picking: $picking_id, move: $move_id)");
+            } else {
+                $error_msg = "Failed to create move line for barcode: $barcode";
+                $errors[] = $error_msg;
+                error_log($error_msg);
+            }
+        }
+        
+        // Save quantity for this move
+        if ($move_line_count > 0) {
+            $move_quantity_map[$move_id] = $move_line_count;
         }
     }
     
