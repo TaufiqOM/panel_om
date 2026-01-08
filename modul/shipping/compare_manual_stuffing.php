@@ -797,16 +797,73 @@ foreach ($product_qty_map as $key => $data) {
         </div>
         <?php if (isset($has_any_picking_mismatch) && $has_any_picking_mismatch): ?>
         <div>
+          <button class="btn btn-secondary btn-sm me-2 btn-view-history" id="btnViewHistory" data-shipping-id="<?= $shipping_id ?>">
+            <i class="ki-duotone ki-time fs-2 me-1">
+              <span class="path1"></span>
+              <span class="path2"></span>
+              <span class="path3"></span>
+            </i>
+            History
+          </button>
           <button class="btn btn-primary btn-sm btn-sync-compare" id="btnSyncCompare" data-shipping-id="<?= $shipping_id ?>">
-            <i class="ki-duotone ki-arrows-circle fs-5 me-1">
+            <i class="ki-duotone ki-check fs-2 me-1">
               <span class="path1"></span>
               <span class="path2"></span>
             </i>
-            Sinkron
+            Sinkronkan dengan Odoo
+          </button>
+        </div>
+        <?php else: ?>
+        <div>
+           <button class="btn btn-secondary btn-sm me-2 btn-view-history" id="btnViewHistory" data-shipping-id="<?= $shipping_id ?>">
+            <i class="ki-duotone ki-time fs-2 me-1">
+              <span class="path1"></span>
+              <span class="path2"></span>
+              <span class="path3"></span>
+            </i>
+            History
           </button>
         </div>
         <?php endif; ?>
       </div>
+    </div>
+    
+    <!-- History Modal -->
+    <div class="modal fade" id="historyModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Riwayat Sinkronisasi</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div id="historyLoading" class="text-center py-4">
+                        <div class="spinner-border text-primary" role="status">
+                            <span class="visually-hidden">Loading...</span>
+                        </div>
+                    </div>
+                    <div class="table-responsive" id="historyTableContainer" style="display:none;">
+                        <table class="table table-row-bordered table-row-gray-100 align-middle gs-0 gy-3">
+                            <thead class="fw-bold text-muted">
+                                <tr>
+                                    <th class="min-w-100px">User</th>
+                                    <th class="min-w-120px">Waktu Sync</th>
+                                </tr>
+                            </thead>
+                            <tbody id="historyTableBody">
+                                <!-- Ajax content -->
+                            </tbody>
+                        </table>
+                    </div>
+                    <div id="historyEmpty" class="text-center py-4 text-muted" style="display:none;">
+                        Belum ada riwayat sinkronisasi
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-light" data-bs-dismiss="modal">Tutup</button>
+                </div>
+            </div>
+        </div>
     </div>
     
     <?php if (isset($has_any_picking_mismatch) && $has_any_picking_mismatch): ?>
@@ -1174,6 +1231,83 @@ window.syncCompareManualStuffing = function(btn) {
             });
         }
     }, 100);
+})();
+
+// Function to view history
+window.viewSyncHistory = function(btn) {
+    const shippingId = btn.dataset.shippingId;
+    
+    // Show modal
+    const modal = new bootstrap.Modal(document.getElementById('historyModal'));
+    modal.show();
+    
+    // Reset state
+    document.getElementById('historyLoading').style.display = 'block';
+    document.getElementById('historyTableContainer').style.display = 'none';
+    document.getElementById('historyEmpty').style.display = 'none';
+    document.getElementById('historyTableBody').innerHTML = '';
+    
+    // Fetch data
+    fetch('shipping/get_sync_history.php?id_shipping=' + encodeURIComponent(shippingId))
+    .then(response => response.json())
+    .then(data => {
+        document.getElementById('historyLoading').style.display = 'none';
+        
+        if (data.success && data.data && data.data.length > 0) {
+            document.getElementById('historyTableContainer').style.display = 'block';
+            
+            const tbody = document.getElementById('historyTableBody');
+            let html = '';
+            
+            data.data.forEach(row => {
+                let badgeClass = 'badge-light-primary';
+                if (row.sync_type === 'shipping_batch') badgeClass = 'badge-light-info';
+                
+                html += `
+                    <tr>
+                        <td>
+                            <div class="d-flex align-items-center">
+                                <div class="symbol symbol-35px me-2">
+                                    <span class="symbol-label bg-light-primary text-primary fw-bold">
+                                        ${row.user_name ? row.user_name.charAt(0).toUpperCase() : '?'}
+                                    </span>
+                                </div>
+                                <div>
+                                    <span class="text-gray-800 fw-bold">${row.user_name || 'Unknown'}</span>
+                                    
+                                </div>
+                            </div>
+                        </td>
+                        <td>
+                            <span class="text-gray-800 fw-bold d-block fs-7">${row.sync_at_formatted}</span>
+                        </td>
+                    </tr>
+                `;
+            });
+            
+            tbody.innerHTML = html;
+        } else {
+            document.getElementById('historyEmpty').style.display = 'block';
+        }
+    })
+    .catch(error => {
+        console.error('Error fetching history:', error);
+        document.getElementById('historyLoading').style.display = 'none';
+        document.getElementById('historyEmpty').innerHTML = 'Gagal memuat data history';
+        document.getElementById('historyEmpty').style.display = 'block';
+    });
+};
+
+// Attach event listener for history button
+(function() {
+    // Event delegation for dynamically loaded button
+    document.body.addEventListener('click', function(e) {
+        if (e.target.closest('.btn-view-history')) {
+            e.preventDefault();
+            const btn = e.target.closest('.btn-view-history');
+            viewSyncHistory(btn);
+        }
+    });
 })();
 </script>
 

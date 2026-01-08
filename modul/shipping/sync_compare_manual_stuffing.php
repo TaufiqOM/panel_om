@@ -479,6 +479,43 @@ try {
         error_log("Total picking updated: $scheduled_date_updated picking");
     }
     
+    // LOG HISTORY
+    $user_name = $_SESSION['username'] ?? 'Unknown';
+    $id_user = 0;
+    
+    // Coba ambil id_user jika ada tabel user (sys_users atau lainnya)
+    // Asumsi: Kita simpan username, nanti bisa join atau simpan id jika tahu struktur tabel usernya
+    // Untuk sekarang simpan username dan coba cari id nya
+    
+    $stmt_user = $conn->prepare("SELECT id FROM user_accounts WHERE username = ?");
+    if ($stmt_user) {
+        $stmt_user->bind_param("s", $user_name);
+        $stmt_user->execute();
+        $res_user = $stmt_user->get_result();
+        if ($row_user = $res_user->fetch_assoc()) {
+            $id_user = $row_user['id'];
+        }
+        $stmt_user->close();
+    }
+    
+    // FETCH REAL NAME FROM ODOO
+    $real_name = $user_name; // Default to email
+    $uid = $_SESSION['uid'] ?? 0;
+    if ($uid) {
+        $users_odoo = callOdooRead($username, 'res.users', [['id', '=', $uid]], ['name']);
+        if ($users_odoo && isset($users_odoo[0]['name'])) {
+            $real_name = $users_odoo[0]['name'];
+        }
+    }
+    
+    // Insert log using Real Name
+    $stmt_log = $conn->prepare("INSERT INTO shipping_sync_log (id_shipping, id_user, user_name, sync_type, sync_at) VALUES (?, ?, ?, 'manual_stuffing', NOW())");
+    if ($stmt_log) {
+        $stmt_log->bind_param("iis", $shipping_id, $id_user, $real_name);
+        $stmt_log->execute();
+        $stmt_log->close();
+    }
+
     echo json_encode([
         'success' => true,
         'message' => $message,
